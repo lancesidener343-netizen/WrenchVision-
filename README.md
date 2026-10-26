@@ -1,0 +1,58 @@
+# WrenchVision
+
+A mobile web app that turns a phone photo of a machine into an
+exploded-view repair manual with a spoken step-by-step walkthrough.
+
+## What it does
+
+**Inputs**
+
+- A photo of the machine — taken with the phone camera or uploaded from
+  the photo library.
+- A description of the job — typed, or spoken into the phone's microphone.
+
+**Outputs**
+
+- The identified machine.
+- An exploded-view diagram area with numbered callouts naming the parts.
+- A step list for the repair. Every step carries one of three labels:
+  - **verified** — confirmed from the machine's own evidence,
+  - **inferred** — reasoned from what is visible,
+  - **illustrative** — a diagram-level illustration, not a confirmed fact.
+- A spoken walkthrough that reads the steps aloud on the device.
+
+## Demo machines
+
+- **Main demo:** Honda EU7000is generator (live walkthrough).
+- **Fallback demo case:** Cat 45 pump.
+
+## Run it locally
+
+```sh
+cd ~/workspace/wrenchvision-app
+node server.js
+```
+
+Then open http://localhost:3000 on the phone or computer.
+
+To enable live manual generation, set the Meta Model API key as an
+environment variable before starting the server:
+
+```sh
+META_API_KEY=your-key-here node server.js
+```
+
+The key is never stored in this repo, never sent to the browser, and
+never shown in the app. Without a key, the app reports clearly that the
+key is not configured instead of showing a manual.
+
+## Files
+
+- `index.html` — mobile-first single page: camera capture with
+  file-upload fallback, photo preview, job description input with voice
+  input, and the results area.
+- `app.js` — frontend logic and the API client. It talks only to this
+  app's own backend and never handles an API key.
+- `server.js` — Node backend (no external dependencies). Serves the
+  frontend and calls the Meta Model API, standard tier, on the server
+  side only.

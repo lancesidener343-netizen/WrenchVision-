@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>WrenchVision — Exploded-View Repair Manual</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; }
+  body { margin: 0; padding: 16px; max-width: 720px; margin-inline: auto; background: #f6f6f2; color: #1c1c1c; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.sub { color: #555; margin: 0 0 16px; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  video, img.preview { width: 100%; border-radius: 8px; background: #111; display: block; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button { flex: 1; min-width: 120px; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; background: #14532d; color: #fff; cursor: pointer; }
+  button.secondary { background: #e5e5e5; color: #1c1c1c; }
+  button:disabled { opacity: 0.5; }
+  input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+  .badge { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+  .verified { background: #dcfce7; color: #14532d; }
+  .inferred { background: #fef9c3; color: #713f12; }
+  .illustrative { background: #e0e7ff; color: #3730a3; }
+  .diagram { border: 2px dashed #999; border-radius: 8px; padding: 24px 14px; text-align: center; color: #555; margin: 10px 0; }
+  .callouts { padding-left: 20px; }
+  .error { background: #fee2e2; color: #7f1d1d; padding: 10px; border-radius: 8px; }
+  .hint { color: #666; font-size: 0.85rem; }
+  ol.steps li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h1>🔧 WrenchVision</h1>
+<p class="sub">Point your phone at a machine. Get an exploded-view repair manual with a spoken walkthrough.</p>
+
+<div class="card">
+  <h2>1. Show the machine</h2>
+  <video id="camera" autoplay playsinline muted hidden></video>
+  <img id="preview" class="preview" hidden alt="Captured machine photo">
+  <div class="row">
+    <button id="startCamera" class="secondary">Open camera</button>
+    <button id="capture" disabled>Take photo</button>
+  </div>
+  <p class="hint">No camera? Use the upload below instead.</p>
+  <input type="file" id="fileInput" accept="image/*" capture="environment">
+</div>
+
+<div class="card">
+  <h2>2. Describe the job</h2>
+  <textarea id="task" rows="3" placeholder="Example: generator won't stay running, or pump pressure is low"></textarea>
+  <div class="row">
+    <button id="micBtn" class="secondary">🎤 Speak it</button>
+  </div>
+  <p id="micHint" class="hint"></p>
+</div>
+
+<div class="card">
+  <button id="generate">Generate manual</button>
+  <p id="status" class="hint"></p>
+</div>
+
+<div class="card" id="results" hidden>
+  <h2>Manual</h2>
+  <p><strong>Identified machine:</strong> <span id="machine">—</span></p>
+  <div class="diagram" id="diagramBox">Exploded-view diagram appears here.</div>
+  <h3>Numbered callouts</h3>
+  <ol class="callouts" id="callouts"></ol>
+  <h3>Steps</h3>
+  <ol class="steps" id="steps"></ol>
+  <div class="row">
+    <button id="speakBtn">🔊 Spoken walkthrough</button>
+    <button id="stopSpeakBtn" class="secondary">Stop</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

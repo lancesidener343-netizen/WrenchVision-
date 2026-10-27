@@ -69,6 +69,24 @@
     <button id="speakBtn">🔊 Spoken walkthrough</button>
     <button id="stopSpeakBtn" class="secondary">Stop</button>
   </div>
+  <div class="row">
+    <button id="partsBtn">🔩 Parts list</button>
+  </div>
+  <h3>Follow-up</h3>
+  <textarea id="followup" rows="2" placeholder="Add a symptom, correct a step, or confirm a part — the manual updates on this same job"></textarea>
+  <div class="row">
+    <button id="followupBtn">Update manual</button>
+  </div>
+  <p id="followupStatus" class="hint"></p>
+</div>
+
+<div class="card" id="partsPage" hidden>
+  <h2>Parts list</h2>
+  <p><strong>Machine:</strong> <span id="partsMachine">—</span></p>
+  <ol class="steps" id="partsList"></ol>
+  <div class="row">
+    <button id="backBtn" class="secondary">← Back to manual</button>
+  </div>
 </div>
 
 <script src="app.js"></script>

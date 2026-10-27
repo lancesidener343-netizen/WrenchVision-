@@ -20,6 +20,9 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   - **inferred** — reasoned from what is visible,
   - **illustrative** — a diagram-level illustration, not a confirmed fact.
 - A spoken walkthrough that reads the steps aloud on the device.
+- A parts list page (every part needed, each identified and labeled).
+- Follow-up updates: type extra symptoms, corrections, or
+  confirmations and the manual updates on the same job.
 
 ## Demo machines
 
@@ -55,4 +58,5 @@ key is not configured instead of showing a manual.
   app's own backend and never handles an API key.
 - `server.js` — Node backend (no external dependencies). Serves the
   frontend and calls the Meta Model API, standard tier, on the server
-  side only.
+  side only. It keeps the current job in memory so follow-up updates
+  reuse the same manual.

@@ -9,9 +9,10 @@
 // Generate-Scan-Fix loop, proven live Oct 26 2026 against the API:
 // Generate drafts the manual, Scan returns only the step numbers that
 // are unsafe or inconsistent, Fix applies any flags and returns the
-// final manual. muse-spark-1.3 reasons before answering and spends
-// roughly 1500 to 3000 tokens doing so, so every call uses a generous
-// token budget and empty model output is never presented as a manual.
+// final manual. muse-spark-1.3 reasons before answering and on one
+// Oct 27 night call spent all 5000 completion tokens reasoning and
+// returned nothing, so every call uses an 8000-token budget and
+// empty model output is never presented as a manual.
 //
 // Factory grounding: when the machine is a Honda EU7000is, Generate
 // and follow-up include a compact reference taken from the 2023
@@ -26,7 +27,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v5";
+const VERSION = "v6";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
@@ -219,7 +220,7 @@ async function handleGenerate(req, res) {
 // unparseable. Throws when the model service itself errors.
 async function runManualLoop(apiKey, messages) {
   // Step 1 — Generate.
-  const generated = await callModel(apiKey, messages, 5000);
+  const generated = await callModel(apiKey, messages, 8000);
   let manual = tryParseManual(generated);
   if (!manual) {
     // Empty or unparseable output is never presented as a manual.
@@ -237,7 +238,7 @@ async function runManualLoop(apiKey, messages) {
         "inconsistent with the symptoms. Reply [] if every step is " +
         "fine. No explanation. Steps: " + JSON.stringify(manual.steps),
     }],
-    5000
+    8000
   );
   const flags = tryParseFlags(scanText);
 
@@ -258,7 +259,7 @@ async function runManualLoop(apiKey, messages) {
           JSON.stringify(manual) +
           " Flags: " + JSON.stringify(flags),
       }],
-      5000
+      8000
     );
     const fixedManual = tryParseManual(fixed);
     if (fixedManual) {

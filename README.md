@@ -64,7 +64,7 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: camera capture with
   file-upload fallback, photo preview, job description input with voice
   input, and the results area. The page footer shows the app version
-  (v5), so a phone screenshot settles which build is running.
+  (v6), so a phone screenshot settles which build is running.
 - `app.js` — frontend logic and the API client. It talks only to this
   app's own backend and never handles an API key. Photos are
   downscaled to 1280px on the long edge before sending.

@@ -27,6 +27,7 @@ const partsPage = $("partsPage");
 const partsMachine = $("partsMachine");
 const partsList = $("partsList");
 const backBtn = $("backBtn");
+const manualBtn = $("manualBtn");
 const followupInput = $("followup");
 const followupBtn = $("followupBtn");
 const followupStatus = $("followupStatus");
@@ -35,6 +36,7 @@ let stream = null;
 let photoDataUrl = null;
 let currentSteps = [];
 let currentParts = [];
+let currentManualUrl = null;
 
 // Photos are downscaled to at most 1280px on the long edge before
 // they are stored or sent. Full-resolution phone photos blew past the
@@ -160,6 +162,7 @@ generateBtn.addEventListener("click", async () => {
     stepsEl.innerHTML = `<li class="error">${escapeHtml(err.message)}</li>`;
     currentSteps = [];
     currentParts = [];
+    currentManualUrl = null;
     partsPage.hidden = true;
   } finally {
     generateBtn.disabled = false;
@@ -211,6 +214,7 @@ function renderManual(data) {
     .join("");
   currentSteps = data.steps || [];
   currentParts = data.parts || [];
+  currentManualUrl = data.manualUrl || null;
   stepsEl.innerHTML = currentSteps
     .map((s) => {
       const label = (s.label || "inferred").toLowerCase();
@@ -256,6 +260,7 @@ partsBtn.addEventListener("click", () => {
         })
         .join("")
     : `<li class="hint">No parts listed for this manual.</li>`;
+  manualBtn.hidden = !currentManualUrl;
   resultsEl.hidden = true;
   partsPage.hidden = false;
   window.scrollTo(0, 0);
@@ -264,6 +269,12 @@ backBtn.addEventListener("click", () => {
   partsPage.hidden = true;
   resultsEl.hidden = false;
   window.scrollTo(0, 0);
+});
+manualBtn.addEventListener("click", () => {
+  // Factory manual only: opens the whitelisted owner's-manual URL the
+  // server returned with this job (Honda EU7000is today). No button
+  // shows for machines with no factory link — never a guessed URL.
+  if (currentManualUrl) window.open(currentManualUrl, "_blank", "noopener");
 });
 
 // --- Follow-up (same job, updated manual) ---

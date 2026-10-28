@@ -1,0 +1,1 @@
+{"forwardPorts":[3000],"image":"mcr.microsoft.com/devcontainers/javascript-node:24","name":"WrenchVision","portsAttributes":{"3000":{"label":"WrenchVision","onAutoForward":"open"}}}

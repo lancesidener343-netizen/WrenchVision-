@@ -35,6 +35,29 @@ let photoDataUrl = null;
 let currentSteps = [];
 let currentParts = [];
 
+// Photos are downscaled to at most 1280px on the long edge before
+// they are stored or sent. Full-resolution phone photos blew past the
+// phone's memory at capture time and made the upload huge; the model
+// only needs a readable photo.
+const MAX_PHOTO_EDGE = 1280;
+function downscaleDataUrl(dataUrl, done) {
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(img.width, img.height));
+    if (scale === 1) {
+      done(dataUrl);
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    done(canvas.toDataURL("image/jpeg", 0.8));
+  };
+  img.onerror = () => done(dataUrl);
+  img.src = dataUrl;
+}
+
 // --- Camera ---
 startCameraBtn.addEventListener("click", async () => {
   try {
@@ -53,11 +76,17 @@ startCameraBtn.addEventListener("click", async () => {
 });
 
 captureBtn.addEventListener("click", () => {
+  // Draw already downscaled: the capture canvas itself stays small,
+  // which is what keeps the phone's memory out of trouble.
+  const scale = Math.min(
+    1,
+    MAX_PHOTO_EDGE / Math.max(video.videoWidth, video.videoHeight)
+  );
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  photoDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  photoDataUrl = canvas.toDataURL("image/jpeg", 0.8);
   preview.src = photoDataUrl;
   preview.hidden = false;
   video.hidden = true;
@@ -70,10 +99,12 @@ fileInput.addEventListener("change", () => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    photoDataUrl = reader.result;
-    preview.src = photoDataUrl;
-    preview.hidden = false;
-    video.hidden = true;
+    downscaleDataUrl(reader.result, (small) => {
+      photoDataUrl = small;
+      preview.src = small;
+      preview.hidden = false;
+      video.hidden = true;
+    });
   };
   reader.readAsDataURL(file);
 });

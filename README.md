@@ -38,6 +38,12 @@ node server.js
 
 Then open http://localhost:3000 on the phone or computer.
 
+To run it over https instead — which the phone camera and microphone
+need, since both stay silent on a plain http:// address — open this
+repo in a GitHub Codespace: the forwarded port 3000 comes up as https
+and the camera and mic work. In the Codespace terminal, set the key
+and start the server the same way as above.
+
 To enable live manual generation, set the Meta Model API key as an
 environment variable before starting the server:
 
@@ -55,8 +61,11 @@ key is not configured instead of showing a manual.
   file-upload fallback, photo preview, job description input with voice
   input, and the results area.
 - `app.js` — frontend logic and the API client. It talks only to this
-  app's own backend and never handles an API key.
+  app's own backend and never handles an API key. Photos are
+  downscaled to 1280px on the long edge before sending.
 - `server.js` — Node backend (no external dependencies). Serves the
   frontend and calls the Meta Model API, standard tier, on the server
-  side only. It keeps the current job in memory so follow-up updates
-  reuse the same manual.
+  side only. It keeps the current job in memory and saved to
+  `wrenchvision-job.json`, so a server restart does not wipe it.
+- `.devcontainer/devcontainer.json` — one-click GitHub Codespace
+  setup (Node 24, port 3000 forwarded as https).

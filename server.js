@@ -21,10 +21,34 @@ const PORT = process.env.PORT || 3000;
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
-// The current job, kept in memory only: the machine, the original job
-// text, and the latest manual (including parts). POST /api/followup
-// updates this job's manual with new info, using the same loop.
-let currentJob = null;
+// The current job: the machine, the original job text, and the
+// latest manual (including parts). POST /api/followup updates this
+// job's manual with new info, using the same loop. The job is also
+// saved to disk after every update, so a server restart no longer
+// wipes it. The file holds only the machine, the job text, and the
+// latest manual — never a key.
+const JOB_FILE = path.join(__dirname, "wrenchvision-job.json");
+let currentJob = loadJob();
+
+function loadJob() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(JOB_FILE, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.manual) {
+      return parsed;
+    }
+  } catch {
+    // No saved job yet, or it is unreadable — start fresh.
+  }
+  return null;
+}
+
+function saveJob() {
+  try {
+    fs.writeFileSync(JOB_FILE, JSON.stringify(currentJob));
+  } catch {
+    // A failed save must not break the manual that is already built.
+  }
+}
 
 const MIME = {
   ".html": "text/html",
@@ -138,6 +162,7 @@ async function handleGenerate(req, res) {
   }
 
   currentJob = { machine: manual.machine, task: input.task || "", manual };
+  saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(manual));
@@ -275,6 +300,7 @@ async function handleFollowup(req, res) {
   }
 
   currentJob = { machine: manual.machine, task: currentJob.task, manual };
+  saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify(manual));

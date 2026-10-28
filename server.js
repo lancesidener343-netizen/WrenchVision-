@@ -26,6 +26,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
+const VERSION = "v5";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
@@ -497,7 +498,7 @@ function tryParseManual(raw) {
 }
 
 server.listen(PORT, () => {
-  console.log(`WrenchVision listening on http://localhost:${PORT}`);
+  console.log(`WrenchVision ${VERSION} listening on http://localhost:${PORT}`);
   if (!process.env.META_API_KEY) {
     console.log("META_API_KEY is not set — /api/generate will report that.");
   }

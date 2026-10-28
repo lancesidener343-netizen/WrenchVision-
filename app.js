@@ -17,6 +17,7 @@ const statusEl = $("status");
 const resultsEl = $("results");
 const machineEl = $("machine");
 const diagramBox = $("diagramBox");
+const factoryLinksEl = $("factoryLinks");
 const calloutsEl = $("callouts");
 const stepsEl = $("steps");
 const speakBtn = $("speakBtn");
@@ -154,6 +155,7 @@ generateBtn.addEventListener("click", async () => {
     resultsEl.hidden = false;
     machineEl.textContent = "—";
     diagramBox.innerHTML = "";
+    factoryLinksEl.innerHTML = "";
     calloutsEl.innerHTML = "";
     stepsEl.innerHTML = `<li class="error">${escapeHtml(err.message)}</li>`;
     currentSteps = [];
@@ -171,8 +173,39 @@ function renderManual(data) {
   followupStatus.textContent = "";
   machineEl.textContent = data.machine || "Unknown — see steps";
   partsMachine.textContent = data.machine || "Unknown — see steps";
-  diagramBox.textContent = data.diagramNote ||
-    "Exploded-view diagram appears here.";
+  diagramBox.innerHTML = "";
+  if (data.diagramSvg) {
+    // Server-sanitized SVG only; nothing else is injected as HTML.
+    diagramBox.innerHTML = data.diagramSvg;
+    const cap = document.createElement("p");
+    cap.className = "hint";
+    cap.textContent =
+      (data.diagramNote || "Exploded-view diagram appears here.") +
+      " Schematic diagram — illustrative, drawn from the factory component set.";
+    diagramBox.appendChild(cap);
+  } else {
+    diagramBox.textContent =
+      data.diagramNote || "Exploded-view diagram appears here.";
+  }
+  factoryLinksEl.innerHTML = "";
+  const links = [];
+  if (data.manualUrl) {
+    links.push(["Factory owner's manual", data.manualUrl]);
+  }
+  if (data.partsUrl) {
+    links.push(["Honda parts catalog — exploded diagrams", data.partsUrl]);
+  }
+  links.forEach(([label, href], i) => {
+    if (i) {
+      factoryLinksEl.appendChild(document.createTextNode(" · "));
+    }
+    const a = document.createElement("a");
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = label;
+    factoryLinksEl.appendChild(a);
+  });
   calloutsEl.innerHTML = (data.callouts || [])
     .map((c) => `<li>${escapeHtml(String(c))}</li>`)
     .join("");

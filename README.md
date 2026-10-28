@@ -23,6 +23,10 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
 - A parts list page (every part needed, each identified and labeled).
 - Follow-up updates: type extra symptoms, corrections, or
   confirmations and the manual updates on the same job.
+- A schematic diagram in the diagram area, drawn from the factory
+  component set and labeled illustrative, plus links to the factory
+  owner's manual and Honda's free parts catalog for the true exploded
+  diagrams (EU7000is only, so far).
 
 ## Demo machines
 
@@ -67,5 +71,7 @@ key is not configured instead of showing a manual.
   frontend and calls the Meta Model API, standard tier, on the server
   side only. It keeps the current job in memory and saved to
   `wrenchvision-job.json`, so a server restart does not wipe it.
+  For a Honda EU7000is it also grounds generation in a compact
+  factory reference from the 2023 owner's manual.
 - `.devcontainer/devcontainer.json` — one-click GitHub Codespace
   setup (Node 24, port 3000 forwarded as https).

@@ -12,6 +12,14 @@
 // final manual. muse-spark-1.3 reasons before answering and spends
 // roughly 1500 to 3000 tokens doing so, so every call uses a generous
 // token budget and empty model output is never presented as a manual.
+//
+// Factory grounding: when the machine is a Honda EU7000is, Generate
+// and follow-up include a compact reference taken from the 2023
+// owner's manual (specs, intervals, battery and fuse facts). The
+// in-app diagram is a schematic drawn from that factory component
+// set, labeled illustrative; the true exploded diagrams live in
+// Honda's free parts catalog, which the app links to instead of
+// copying Honda's images.
 
 const http = require("http");
 const fs = require("fs");
@@ -20,6 +28,29 @@ const path = require("path");
 const PORT = process.env.PORT || 3000;
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
+
+// Compact Honda EU7000is factory reference, verified Oct 27 2026
+// from the 2023 owner's manual (00X31-Z37-6230). Facts only — the
+// book names no battery type code, so none is claimed from it.
+const EU7000IS_REFERENCE = [
+  "Honda EU7000is factory reference (2023 owner's manual):",
+  "Engine GX390T2, 389cc; oil capacity 1.2 US qt; fuel tank 5.07 gal.",
+  "Spark plug NGK BPR6ES, gap 0.7-0.8 mm; plug torque 13.0 lbf-ft.",
+  "Oil drain plug torque 16.3 lbf-ft; drain warm, new sealing washer.",
+  "Battery 12V 11.2Ah; charge at 1.1A for 5-10 hours; charge monthly if",
+  "used periodically. Remove negative cable first, then positive.",
+  "Install positive first, boot over positive terminal, then negative.",
+  "Fuses 3A and 15A; a blown fuse means the starter will not work.",
+  "Fuel pump filter: change every 2 years or 1000 hours — dealer item",
+  "unless mechanically proficient with proper tools (shop manual).",
+  "Valve clearance IN 0.15, EX 0.20 mm (dealer).",
+].join("\n");
+
+// Links the app may show. Anything else the model offers is dropped:
+// a factory link must be a verified source, never an invented URL.
+const EU7000IS_MANUAL_URL =
+  "https://productguidebook.com/files/manuals/hondapower-eu7000is-owners-manual_Ryh6mI3.pdf";
+const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
 
 // The current job: the machine, the original job text, and the
 // latest manual (including parts). POST /api/followup updates this
@@ -127,14 +158,28 @@ async function handleGenerate(req, res) {
   const userText = [
     "Identify the machine in the photo, if one was provided.",
     input.task ? `The user reports: ${input.task}` : "",
+    "If the machine is a Honda EU7000is, ground every fact you can in " +
+      "this factory reference and say nothing that contradicts it. " +
+      "For any other machine, ignore the reference entirely.\n" +
+      EU7000IS_REFERENCE,
     "Return a repair manual as JSON with keys: machine (string), " +
       "callouts (array of short part labels), steps (array of objects " +
       "with text and label, where label is one of verified, inferred, " +
-      "illustrative), diagramNote (one short line), parts (array of " +
+      "illustrative), diagramNote (one short line), diagramSvg (a " +
+      "single SVG string, max 4000 characters, no style blocks, no " +
+      "scripts, no external references: a simple exploded-style " +
+      "schematic of the machine built from the callouts, parts " +
+      "spread apart as in an exploded view, each with a numbered " +
+      "marker matching its callouts order — this is a schematic, " +
+      "not a photo trace), parts (array of " +
       "objects with short name, short identification, and label, where " +
       "identification says what the part is and why it is needed, and " +
       "label is one of verified, inferred, illustrative — list every " +
-      "part needed for this repair, each labeled honestly).",
+      "part needed for this repair, each labeled honestly), " +
+      "manualUrl (only when the machine is a Honda EU7000is, use " +
+      "exactly " + EU7000IS_MANUAL_URL + "; otherwise omit it), " +
+      "partsUrl (only when the machine is a Honda EU7000is, use " +
+      "exactly " + EU7000IS_PARTS_URL + "; otherwise omit it).",
   ].filter(Boolean).join("\n");
 
   const content = [{ type: "text", text: userText }];
@@ -206,7 +251,9 @@ async function runManualLoop(apiKey, messages) {
           "final manual as JSON with keys: machine, callouts, steps " +
           "(text and label, one of verified, inferred, " +
           "illustrative), parts (name, identification, label, one of " +
-          "verified, inferred, illustrative), diagramNote. Draft: " +
+          "verified, inferred, illustrative), diagramNote, diagramSvg " +
+          "(keep the draft's schematic, fixing only what the flags " +
+          "require), manualUrl, partsUrl. Draft: " +
           JSON.stringify(manual) +
           " Flags: " + JSON.stringify(flags),
       }],
@@ -214,6 +261,16 @@ async function runManualLoop(apiKey, messages) {
     );
     const fixedManual = tryParseManual(fixed);
     if (fixedManual) {
+      // A fix must not silently drop the diagram or factory links.
+      if (!fixedManual.diagramSvg) {
+        fixedManual.diagramSvg = manual.diagramSvg;
+      }
+      if (!fixedManual.manualUrl) {
+        fixedManual.manualUrl = manual.manualUrl;
+      }
+      if (!fixedManual.partsUrl) {
+        fixedManual.partsUrl = manual.partsUrl;
+      }
       manual = fixedManual;
     }
     // If Fix fails, the scanned draft still goes out with its labels.
@@ -267,6 +324,10 @@ async function handleFollowup(req, res) {
       "verified, inferred, or illustrative — a fact the user " +
       "confirms becomes verified, anything else stays inferred or " +
       "illustrative.",
+    "If the machine is a Honda EU7000is, ground every fact you can in " +
+      "this factory reference and say nothing that contradicts it. " +
+      "For any other machine, ignore the reference entirely.\n" +
+      EU7000IS_REFERENCE,
     currentJob.task ? `Original job: ${currentJob.task}` : "",
     "Current manual: " + JSON.stringify(currentJob.manual),
     "New information: " + text,
@@ -274,9 +335,10 @@ async function handleFollowup(req, res) {
       "(string), callouts (array of short part labels), steps (array " +
       "of objects with text and label, where label is one of " +
       "verified, inferred, illustrative), diagramNote (one short " +
-      "line), parts (array of objects with short name, short " +
-      "identification, and label, where label is one of verified, " +
-      "inferred, illustrative).",
+      "line), diagramSvg (keep the current schematic unless the new " +
+      "information changes it), parts (array of objects with short " +
+      "name, short identification, and label, where label is one of " +
+      "verified, inferred, illustrative), manualUrl, partsUrl.",
   ].filter(Boolean).join("\n");
 
   let manual;
@@ -339,6 +401,60 @@ function tryParseFlags(raw) {
   }
 }
 
+// Model-supplied SVG is untrusted markup: strip everything that can
+// run code or pull in outside content, and keep only basic shapes
+// and text. Returns "" when nothing safe remains.
+function sanitizeSvg(raw) {
+  if (typeof raw !== "string") {
+    return "";
+  }
+  let svg = raw.slice(0, 8000);
+  const start = svg.indexOf("<svg");
+  const end = svg.lastIndexOf("</svg>");
+  if (start === -1 || end === -1 || end <= start) {
+    return "";
+  }
+  svg = svg.slice(start, end + 6);
+  svg = svg.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
+  svg = svg.replace(/<foreignObject[\s\S]*?<\/foreignObject\s*>/gi, "");
+  svg = svg.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
+  svg = svg.replace(/<iframe[\s\S]*?<\/iframe\s*>/gi, "");
+  svg = svg.replace(/<image[\s\S]*?>/gi, "");
+  svg = svg.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  svg = svg.replace(/\shref\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (m) =>
+    /href\s*=\s*("|')#/.test(m) ? m : ""
+  );
+  svg = svg.replace(/\sxlink:href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (m) =>
+    /xlink:href\s*=\s*("|')#/.test(m) ? m : ""
+  );
+  svg = svg.replace(/javascript:/gi, "");
+  const allowed = new Set([
+    "svg", "g", "rect", "circle", "ellipse", "line", "polyline",
+    "polygon", "path", "text", "tspan", "title", "desc",
+  ]);
+  svg = svg.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (m, tag) =>
+    allowed.has(tag.toLowerCase()) ? m : ""
+  );
+  return svg.includes("<svg") ? svg : "";
+}
+
+// Parts-catalog links must stay on Honda's catalog host: the exact
+// catalog URL, or the same URL followed by a path, query, or
+// fragment — never a lookalike host.
+function isPartsUrl(u) {
+  if (typeof u !== "string") {
+    return false;
+  }
+  if (u === EU7000IS_PARTS_URL) {
+    return true;
+  }
+  if (!u.startsWith(EU7000IS_PARTS_URL)) {
+    return false;
+  }
+  const next = u[EU7000IS_PARTS_URL.length];
+  return next === "#" || next === "/" || next === "?";
+}
+
 function tryParseManual(raw) {
   try {
     const jsonText = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
@@ -371,6 +487,9 @@ function tryParseManual(raw) {
             .filter((p) => p.name)
         : [],
       diagramNote: parsed.diagramNote || "Exploded-view diagram appears here.",
+      diagramSvg: sanitizeSvg(parsed.diagramSvg),
+      manualUrl: parsed.manualUrl === EU7000IS_MANUAL_URL ? parsed.manualUrl : "",
+      partsUrl: isPartsUrl(parsed.partsUrl) ? parsed.partsUrl : "",
     };
   } catch {
     return null;

@@ -19,6 +19,8 @@ const diagramBox = $("diagramBox");
 const factoryLinksEl = $("factoryLinks");
 const calloutsEl = $("callouts");
 const stepsEl = $("steps");
+const troubleshootHeading = $("troubleshootHeading");
+const troubleshootEl = $("troubleshoot");
 const speakBtn = $("speakBtn");
 const stopSpeakBtn = $("stopSpeakBtn");
 const partsBtn = $("partsBtn");
@@ -130,6 +132,9 @@ generateBtn.addEventListener("click", async () => {
     factoryLinksEl.innerHTML = "";
     calloutsEl.innerHTML = "";
     stepsEl.innerHTML = `<li class="error">${escapeHtml(err.message)}</li>`;
+    troubleshootHeading.hidden = true;
+    troubleshootEl.innerHTML = "";
+    troubleshootEl.hidden = true;
     currentSteps = [];
     currentParts = [];
     currentManualUrl = null;
@@ -192,6 +197,25 @@ function renderManual(data) {
         ? label
         : "inferred";
       return `<li>${escapeHtml(s.text)}<span class="badge ${cls}">${cls}</span></li>`;
+    })
+    .join("");
+  // Troubleshooting: symptom, cause, check — shown only when the
+  // manual carries entries; older saved jobs without the section
+  // render cleanly with the heading hidden.
+  const troubleshooting = data.troubleshooting || [];
+  const showTrouble = troubleshooting.length > 0;
+  troubleshootHeading.hidden = !showTrouble;
+  troubleshootEl.hidden = !showTrouble;
+  troubleshootEl.innerHTML = troubleshooting
+    .map((t) => {
+      const label = (t.label || "inferred").toLowerCase();
+      const cls = ["verified", "inferred", "illustrative"].includes(label)
+        ? label
+        : "inferred";
+      const parts = [t.symptom, t.cause, t.check]
+        .filter(Boolean)
+        .map(escapeHtml);
+      return `<li>${parts.join(" — ")}<span class="badge ${cls}">${cls}</span></li>`;
     })
     .join("");
 }

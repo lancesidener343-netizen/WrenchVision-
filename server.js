@@ -16,18 +16,27 @@
 //
 // Factory grounding: when the machine is a Honda EU7000is, Generate
 // and follow-up include a compact reference taken from the 2023
-// owner's manual (specs, intervals, battery and fuse facts). The
-// in-app diagram is a schematic drawn from that factory component
-// set, labeled illustrative; the true exploded diagrams live in
-// Honda's free parts catalog, which the app links to instead of
-// copying Honda's images.
+// owner's manual (specs, intervals, battery and fuse facts), and
+// that reference is the truth: steps the book covers are built from
+// it and labeled verified, steps it does not cover are labeled
+// inferred, never as book text. The manual also carries a
+// troubleshooting section (symptom, cause, check, each labeled).
+// The in-app diagram is a schematic drawn from that factory
+// component set, labeled illustrative; the true exploded diagrams
+// live in Honda's free parts catalog, which the app links to
+// instead of copying Honda's images.
+//
+// Clean slate: starting the server wipes any saved job, so the app
+// opens empty. The memory only starts holding once a photo is taken
+// and a manual is generated — after that, leaving the app and
+// coming back mid-job restores the manual on load.
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v9";
+const VERSION = "v10";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
@@ -55,25 +64,25 @@ const EU7000IS_MANUAL_URL =
 const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
 
 // The current job: the machine, the original job text, and the
-// latest manual (including parts). POST /api/followup updates this
-// job's manual with new info, using the same loop. The job is also
-// saved to disk after every update, so a server restart no longer
-// wipes it. GET /api/job returns it, so the page can restore the
-// manual on load. The file holds only the machine, the job text, and
-// the latest manual — never a key.
+// latest manual (including parts and troubleshooting). POST
+// /api/followup updates this job's manual with new info, using the
+// same loop. The job is saved to disk after every update, so
+// leaving the app and coming back mid-job restores the manual on
+// load (GET /api/job) — but a server start is a clean slate by
+// design: the saved job is wiped on startup, so the app opens
+// empty and the memory only starts holding once a photo is taken
+// and a manual is generated. The file holds only the machine, the
+// job text, and the latest manual — never a key.
 const JOB_FILE = path.join(__dirname, "wrenchvision-job.json");
-let currentJob = loadJob();
+let currentJob = null;
 
-function loadJob() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(JOB_FILE, "utf8"));
-    if (parsed && typeof parsed === "object" && parsed.manual) {
-      return parsed;
-    }
-  } catch {
-    // No saved job yet, or it is unreadable — start fresh.
-  }
-  return null;
+// Clean slate: starting the server clears any saved job from an
+// earlier run. Within a run, Generate saves and page reloads
+// restore — the slate only clears on the next server start.
+try {
+  fs.unlinkSync(JOB_FILE);
+} catch {
+  // No saved job to clear — already a clean slate.
 }
 
 function saveJob() {
@@ -99,9 +108,11 @@ const server = http.createServer(async (req, res) => {
       return sendFile(res, "app.js");
     }
     if (req.method === "GET" && req.url === "/api/job") {
-      // Restore: the page reloads the saved job on open, so leaving
-      // the app and coming back shows the manual instead of an empty
-      // form. No model call and no key needed — just the saved job.
+      // Restore within a run: the page reloads the saved job on
+      // open, so leaving the app and coming back mid-job shows the
+      // manual instead of an empty form. No model call and no key
+      // needed — just the saved job. A server start wipes it
+      // (clean slate).
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(
         currentJob
@@ -173,9 +184,14 @@ async function handleGenerate(req, res) {
   const userText = [
     "Identify the machine in the photo, if one was provided.",
     input.task ? `The user reports: ${input.task}` : "",
-    "If the machine is a Honda EU7000is, ground every fact you can in " +
-      "this factory reference and say nothing that contradicts it. " +
-      "For any other machine, ignore the reference entirely.\n" +
+    "If the machine is a Honda EU7000is, the factory reference below " +
+      "is the truth: ground every fact you can in it and say nothing " +
+      "that contradicts it. Build the steps from the reference " +
+      "wherever it covers the job — its specs, intervals, and " +
+      "procedures — and label those steps verified. Where the " +
+      "reference does not cover a step, write it from the job and " +
+      "label it inferred, never as book text. For any other " +
+      "machine, ignore the reference entirely.\n" +
       EU7000IS_REFERENCE,
     "Return a repair manual as JSON with keys: machine (string), " +
       "callouts (array of short part labels), steps (array of objects " +
@@ -191,6 +207,13 @@ async function handleGenerate(req, res) {
       "identification says what the part is and why it is needed, and " +
       "label is one of verified, inferred, illustrative — list every " +
       "part needed for this repair, each labeled honestly), " +
+      "troubleshooting (array of at most 5 objects with symptom, " +
+      "cause, check, and label, where label is one of verified, " +
+      "inferred, illustrative — for the reported problem, the " +
+      "likely causes in order with the check that confirms or " +
+      "rules out each one; ground causes and checks in the " +
+      "factory reference when it covers them, and label each " +
+      "honestly), " +
       "manualUrl (only when the machine is a Honda EU7000is, use " +
       "exactly " + EU7000IS_MANUAL_URL + "; otherwise omit it), " +
       "partsUrl (only when the machine is a Honda EU7000is, use " +
@@ -266,7 +289,10 @@ async function runManualLoop(apiKey, messages) {
           "final manual as JSON with keys: machine, callouts, steps " +
           "(text and label, one of verified, inferred, " +
           "illustrative), parts (name, identification, label, one of " +
-          "verified, inferred, illustrative), diagramNote, diagramSvg " +
+          "verified, inferred, illustrative), troubleshooting " +
+          "(symptom, cause, check, label — keep the draft's " +
+          "entries, fixing only what the flags require), " +
+          "diagramNote, diagramSvg " +
           "(keep the draft's schematic, fixing only what the flags " +
           "require), manualUrl, partsUrl. Draft: " +
           JSON.stringify(manual) +
@@ -285,6 +311,10 @@ async function runManualLoop(apiKey, messages) {
       }
       if (!fixedManual.partsUrl) {
         fixedManual.partsUrl = manual.partsUrl;
+      }
+      // A fix must not silently drop the troubleshooting section.
+      if (!fixedManual.troubleshooting || !fixedManual.troubleshooting.length) {
+        fixedManual.troubleshooting = manual.troubleshooting || [];
       }
       manual = fixedManual;
     }
@@ -339,9 +369,12 @@ async function handleFollowup(req, res) {
       "verified, inferred, or illustrative — a fact the user " +
       "confirms becomes verified, anything else stays inferred or " +
       "illustrative.",
-    "If the machine is a Honda EU7000is, ground every fact you can in " +
-      "this factory reference and say nothing that contradicts it. " +
-      "For any other machine, ignore the reference entirely.\n" +
+    "If the machine is a Honda EU7000is, the factory reference is " +
+      "the truth: ground every fact and every step you can in it, " +
+      "and label steps the reference covers as verified; where it " +
+      "does not cover a step, label it inferred, never as book " +
+      "text. For any other machine, ignore the reference " +
+      "entirely.\n" +
       EU7000IS_REFERENCE,
     currentJob.task ? `Original job: ${currentJob.task}` : "",
     "Current manual: " + JSON.stringify(currentJob.manual),
@@ -353,7 +386,10 @@ async function handleFollowup(req, res) {
       "line), diagramSvg (keep the current schematic unless the new " +
       "information changes it), parts (array of objects with short " +
       "name, short identification, and label, where label is one of " +
-      "verified, inferred, illustrative), manualUrl, partsUrl.",
+      "verified, inferred, illustrative), troubleshooting (array of " +
+      "objects with symptom, cause, check, and label — update it " +
+      "with the new information just like the steps), manualUrl, " +
+      "partsUrl.",
   ].filter(Boolean).join("\n");
 
   let manual;
@@ -500,6 +536,20 @@ function tryParseManual(raw) {
                 : "inferred",
             }))
             .filter((p) => p.name)
+        : [],
+      troubleshooting: Array.isArray(parsed.troubleshooting)
+        ? parsed.troubleshooting
+            .map((t) => ({
+              symptom: String(t.symptom || ""),
+              cause: String(t.cause || ""),
+              check: String(t.check || ""),
+              label: ["verified", "inferred", "illustrative"].includes(
+                String(t.label || "").toLowerCase()
+              )
+                ? String(t.label).toLowerCase()
+                : "inferred",
+            }))
+            .filter((t) => t.symptom || t.cause || t.check)
         : [],
       diagramNote: parsed.diagramNote || "Exploded-view diagram appears here.",
       diagramSvg: sanitizeSvg(parsed.diagramSvg),

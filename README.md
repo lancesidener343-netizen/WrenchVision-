@@ -19,6 +19,12 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   - **verified** — confirmed from the machine's own evidence,
   - **inferred** — reasoned from what is visible,
   - **illustrative** — a diagram-level illustration, not a confirmed fact.
+  For a Honda EU7000is, steps the factory manual covers are built
+  from the manual and labeled verified; steps it does not cover stay
+  inferred, never dressed up as book text.
+- A troubleshooting section: for the reported problem, the likely
+  causes in order with the check that confirms or rules out each
+  one, each labeled the same way.
 - A spoken walkthrough that reads the steps aloud on the device.
 - A parts list page (every part needed, each identified and labeled).
 - Follow-up updates: type extra symptoms, corrections, or
@@ -64,18 +70,23 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: one Open camera button
   (the phone's camera, via the file picker), photo preview, job
   description input with voice input, and the results area. The page footer shows the app version
-  (v9), so a phone screenshot settles which build is running. On
-  load, the page restores the saved job (GET /api/job), so leaving
-  the app and coming back shows the manual instead of an empty form.
+  (v10), so a phone screenshot settles which build is running. On
+  load, the page restores the job saved during this server run
+  (GET /api/job), so leaving the app and coming back mid-job shows
+  the manual instead of an empty form; starting the server is a
+  clean slate — the saved job is wiped on startup.
 - `app.js` — frontend logic and the API client. It talks only to this
   app's own backend and never handles an API key. Photos are
   downscaled to 1280px on the long edge before sending.
 - `server.js` — Node backend (no external dependencies). Serves the
   frontend and calls the Meta Model API, standard tier, on the server
   side only. It keeps the current job in memory and saved to
-  `wrenchvision-job.json`, so a server restart does not wipe it,
-  and GET /api/job returns that job for the page-load restore.
+  `wrenchvision-job.json`, so leaving the app and coming back
+  mid-job restores it; a server start wipes the saved job (clean
+  slate), and GET /api/job returns the current run's job for the
+  page-load restore.
   For a Honda EU7000is it also grounds generation in a compact
-  factory reference from the 2023 owner's manual.
+  factory reference from the 2023 owner's manual, and that
+  reference is the truth for specs and for every step it covers.
 - `.devcontainer/devcontainer.json` — one-click GitHub Codespace
   setup (Node 24, port 3000 forwarded as https).

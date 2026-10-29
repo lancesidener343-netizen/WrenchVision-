@@ -30,13 +30,21 @@
 // opens empty. The memory only starts holding once a photo is taken
 // and a manual is generated — after that, leaving the app and
 // coming back mid-job restores the manual on load.
+//
+// v11: the manual is shaped problem/solution (Problem up top,
+// Solution steps below, walkthrough reads the solution); parts
+// carry verified part numbers, never guessed ones; a New Job
+// button clears the job mid-run; errors render as errors, not
+// steps; Generate waits for the photo and retries once on empty
+// output; and a job that cannot reach the server queues on the
+// phone and sends when it is back on the network.
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v10";
+const VERSION = "v11";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
@@ -55,6 +63,10 @@ const EU7000IS_REFERENCE = [
   "Fuel pump filter: change every 2 years or 1000 hours — dealer item",
   "unless mechanically proficient with proper tools (shop manual).",
   "Valve clearance IN 0.15, EX 0.20 mm (dealer).",
+  "Verified part numbers (use these exact numbers, never guess one):",
+  "fuel pump filter set 16707-Z37-003; spark plug Honda 98079-56846",
+  "(NGK BPR6ES); air filter element 17211-Z3S-003, outer filter",
+  "17218-Z0A-810; engine oil Honda 10W-30 08207-10W30.",
 ].join("\n");
 
 // Links the app may show. Anything else the model offers is dropped:
@@ -64,7 +76,7 @@ const EU7000IS_MANUAL_URL =
 const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
 
 // The current job: the machine, the original job text, and the
-// latest manual (including parts and troubleshooting). POST
+// latest manual (including parts, troubleshooting, and the problem section). POST
 // /api/followup updates this job's manual with new info, using the
 // same loop. The job is saved to disk after every update, so
 // leaving the app and coming back mid-job restores the manual on
@@ -119,6 +131,20 @@ const server = http.createServer(async (req, res) => {
           ? { task: currentJob.task || "", manual: currentJob.manual }
           : { task: "", manual: null }
       ));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/newjob") {
+      // New job: clear the saved job on the server and in the file,
+      // so the next Generate starts from a clean slate mid-run
+      // without restarting the server.
+      currentJob = null;
+      try {
+        fs.unlinkSync(JOB_FILE);
+      } catch {
+        // Nothing saved — already a clean slate.
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     if (req.method === "POST" && req.url === "/api/generate") {
@@ -194,6 +220,10 @@ async function handleGenerate(req, res) {
       "machine, ignore the reference entirely.\n" +
       EU7000IS_REFERENCE,
     "Return a repair manual as JSON with keys: machine (string), " +
+      "problem (object with symptom — the reported problem in one " +
+      "line — and diagnosis — the most likely cause in one or two " +
+      "lines, grounded in the factory reference when it covers it; " +
+      "the steps below are the solution to this problem), " +
       "callouts (array of short part labels), steps (array of objects " +
       "with text and label, where label is one of verified, inferred, " +
       "illustrative), diagramNote (one short line), diagramSvg (a " +
@@ -203,7 +233,10 @@ async function handleGenerate(req, res) {
       "spread apart as in an exploded view, each with a numbered " +
       "marker matching its callouts order — this is a schematic, " +
       "not a photo trace), parts (array of " +
-      "objects with short name, short identification, and label, where " +
+      "objects with short name, short identification, partNumber, " +
+      "and label, where partNumber is the real manufacturer part " +
+      "number when it is known from the factory reference or " +
+      "verified evidence and is left empty rather than guessed, and " +
       "identification says what the part is and why it is needed, and " +
       "label is one of verified, inferred, illustrative — list every " +
       "part needed for this repair, each labeled honestly), " +
@@ -255,9 +288,14 @@ async function handleGenerate(req, res) {
 // Returns the final manual, or null when the model output is empty or
 // unparseable. Throws when the model service itself errors.
 async function runManualLoop(apiKey, messages) {
-  // Step 1 — Generate.
-  const generated = await callModel(apiKey, messages, 8000);
-  let manual = tryParseManual(generated);
+  // Step 1 — Generate, with one retry on empty output: the model
+  // sometimes spends its whole budget reasoning and returns
+  // nothing, and a second try usually lands. A second empty
+  // result still returns null — never a fake manual.
+  let manual = tryParseManual(await callModel(apiKey, messages, 8000));
+  if (!manual) {
+    manual = tryParseManual(await callModel(apiKey, messages, 8000));
+  }
   if (!manual) {
     // Empty or unparseable output is never presented as a manual.
     return null;
@@ -286,9 +324,12 @@ async function runManualLoop(apiKey, messages) {
         role: "user",
         content:
           "Apply these review flags to the draft and return the " +
-          "final manual as JSON with keys: machine, callouts, steps " +
+          "final manual as JSON with keys: machine, problem " +
+          "(symptom, diagnosis — keep the draft's, fixing only " +
+          "what the flags require), callouts, steps " +
           "(text and label, one of verified, inferred, " +
-          "illustrative), parts (name, identification, label, one of " +
+          "illustrative), parts (name, identification, partNumber, " +
+          "label, one of " +
           "verified, inferred, illustrative), troubleshooting " +
           "(symptom, cause, check, label — keep the draft's " +
           "entries, fixing only what the flags require), " +
@@ -315,6 +356,10 @@ async function runManualLoop(apiKey, messages) {
       // A fix must not silently drop the troubleshooting section.
       if (!fixedManual.troubleshooting || !fixedManual.troubleshooting.length) {
         fixedManual.troubleshooting = manual.troubleshooting || [];
+      }
+      // A fix must not silently drop the problem section either.
+      if (!fixedManual.problem || (!fixedManual.problem.symptom && !fixedManual.problem.diagnosis)) {
+        fixedManual.problem = manual.problem || { symptom: "", diagnosis: "" };
       }
       manual = fixedManual;
     }
@@ -380,12 +425,15 @@ async function handleFollowup(req, res) {
     "Current manual: " + JSON.stringify(currentJob.manual),
     "New information: " + text,
     "Return the full updated manual as JSON with keys: machine " +
-      "(string), callouts (array of short part labels), steps (array " +
+      "(string), problem (object with symptom and diagnosis — " +
+      "update it with the new information just like the steps), " +
+      "callouts (array of short part labels), steps (array " +
       "of objects with text and label, where label is one of " +
       "verified, inferred, illustrative), diagramNote (one short " +
       "line), diagramSvg (keep the current schematic unless the new " +
       "information changes it), parts (array of objects with short " +
-      "name, short identification, and label, where label is one of " +
+      "name, short identification, partNumber, and label, where " +
+      "label is one of " +
       "verified, inferred, illustrative), troubleshooting (array of " +
       "objects with symptom, cause, check, and label — update it " +
       "with the new information just like the steps), manualUrl, " +
@@ -515,6 +563,10 @@ function tryParseManual(raw) {
     }
     return {
       machine: parsed.machine || "Unknown — see steps",
+      problem: {
+        symptom: String((parsed.problem && parsed.problem.symptom) || ""),
+        diagnosis: String((parsed.problem && parsed.problem.diagnosis) || ""),
+      },
       callouts: Array.isArray(parsed.callouts) ? parsed.callouts : [],
       steps: parsed.steps.map((s) => ({
         text: String(s.text || ""),
@@ -529,6 +581,7 @@ function tryParseManual(raw) {
             .map((p) => ({
               name: String(p.name || ""),
               identification: String(p.identification || ""),
+              partNumber: String(p.partNumber || ""),
               label: ["verified", "inferred", "illustrative"].includes(
                 String(p.label || "").toLowerCase()
               )

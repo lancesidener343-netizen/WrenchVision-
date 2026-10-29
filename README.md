@@ -15,7 +15,9 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
 
 - The identified machine.
 - An exploded-view diagram area with numbered callouts naming the parts.
-- A step list for the repair. Every step carries one of three labels:
+- A Problem section up top (the reported problem + the most likely
+  cause), with the step list below it as the solution. Every step
+  carries one of three labels:
   - **verified** — confirmed from the machine's own evidence,
   - **inferred** — reasoned from what is visible,
   - **illustrative** — a diagram-level illustration, not a confirmed fact.
@@ -25,8 +27,15 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
 - A troubleshooting section: for the reported problem, the likely
   causes in order with the check that confirms or rules out each
   one, each labeled the same way.
+- A parts list page (every part needed, each identified and labeled,
+  with the real manufacturer part number whenever it is verified —
+  never guessed).
+- A New job button that clears the form and the saved job mid-run,
+  so the next job starts from a clean slate without restarting the
+  server.
+- An offline queue: a job that cannot reach the server is held on
+  the phone and sent when the network is back, instead of being lost.
 - A spoken walkthrough that reads the steps aloud on the device.
-- A parts list page (every part needed, each identified and labeled).
 - Follow-up updates: type extra symptoms, corrections, or
   confirmations and the manual updates on the same job.
 - A schematic diagram in the diagram area, drawn from the factory
@@ -70,7 +79,7 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: one Open camera button
   (the phone's camera, via the file picker), photo preview, job
   description input with voice input, and the results area. The page footer shows the app version
-  (v10), so a phone screenshot settles which build is running. On
+  (v11), so a phone screenshot settles which build is running. On
   load, the page restores the job saved during this server run
   (GET /api/job), so leaving the app and coming back mid-job shows
   the manual instead of an empty form; starting the server is a
@@ -88,5 +97,9 @@ key is not configured instead of showing a manual.
   For a Honda EU7000is it also grounds generation in a compact
   factory reference from the 2023 owner's manual, and that
   reference is the truth for specs and for every step it covers.
+  v11 shapes the manual problem/solution, adds verified part
+  numbers, a troubleshooting section, a New job button, and the
+  offline queue; Generate waits for the photo and retries once on
+  empty model output, and errors render as errors, not steps.
 - `.devcontainer/devcontainer.json` — one-click GitHub Codespace
   setup (Node 24, port 3000 forwarded as https).

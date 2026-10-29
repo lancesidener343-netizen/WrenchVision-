@@ -277,6 +277,25 @@ manualBtn.addEventListener("click", () => {
   if (currentManualUrl) window.open(currentManualUrl, "_blank", "noopener");
 });
 
+// --- Restore the saved job on page load ---
+// Leaving the app and coming back reloads the page; without this,
+// the reload shows an empty form even though the server still holds
+// the job. Fetching it here restores the manual in place, with no
+// new model call and no regeneration.
+(async () => {
+  try {
+    const res = await fetch("/api/job");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.manual && Array.isArray(data.manual.steps)) {
+      if (data.task) taskInput.value = data.task;
+      renderManual(data.manual);
+    }
+  } catch {
+    // No saved job, or the server is unreachable — start fresh.
+  }
+})();
+
 // --- Follow-up (same job, updated manual) ---
 followupBtn.addEventListener("click", async () => {
   const text = followupInput.value.trim();

@@ -27,7 +27,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v7";
+const VERSION = "v8";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 
@@ -58,8 +58,9 @@ const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
 // latest manual (including parts). POST /api/followup updates this
 // job's manual with new info, using the same loop. The job is also
 // saved to disk after every update, so a server restart no longer
-// wipes it. The file holds only the machine, the job text, and the
-// latest manual — never a key.
+// wipes it. GET /api/job returns it, so the page can restore the
+// manual on load. The file holds only the machine, the job text, and
+// the latest manual — never a key.
 const JOB_FILE = path.join(__dirname, "wrenchvision-job.json");
 let currentJob = loadJob();
 
@@ -96,6 +97,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && req.url === "/app.js") {
       return sendFile(res, "app.js");
+    }
+    if (req.method === "GET" && req.url === "/api/job") {
+      // Restore: the page reloads the saved job on open, so leaving
+      // the app and coming back shows the manual instead of an empty
+      // form. No model call and no key needed — just the saved job.
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(
+        currentJob
+          ? { task: currentJob.task || "", manual: currentJob.manual }
+          : { task: "", manual: null }
+      ));
+      return;
     }
     if (req.method === "POST" && req.url === "/api/generate") {
       return handleGenerate(req, res);

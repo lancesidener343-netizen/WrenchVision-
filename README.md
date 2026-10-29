@@ -64,14 +64,17 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: camera capture with
   file-upload fallback, photo preview, job description input with voice
   input, and the results area. The page footer shows the app version
-  (v7), so a phone screenshot settles which build is running.
+  (v8), so a phone screenshot settles which build is running. On
+  load, the page restores the saved job (GET /api/job), so leaving
+  the app and coming back shows the manual instead of an empty form.
 - `app.js` — frontend logic and the API client. It talks only to this
   app's own backend and never handles an API key. Photos are
   downscaled to 1280px on the long edge before sending.
 - `server.js` — Node backend (no external dependencies). Serves the
   frontend and calls the Meta Model API, standard tier, on the server
   side only. It keeps the current job in memory and saved to
-  `wrenchvision-job.json`, so a server restart does not wipe it.
+  `wrenchvision-job.json`, so a server restart does not wipe it,
+  and GET /api/job returns that job for the page-load restore.
   For a Honda EU7000is it also grounds generation in a compact
   factory reference from the 2023 owner's manual.
 - `.devcontainer/devcontainer.json` — one-click GitHub Codespace

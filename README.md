@@ -61,10 +61,10 @@ key is not configured instead of showing a manual.
 
 ## Files
 
-- `index.html` — mobile-first single page: camera capture with
-  file-upload fallback, photo preview, job description input with voice
-  input, and the results area. The page footer shows the app version
-  (v8), so a phone screenshot settles which build is running. On
+- `index.html` — mobile-first single page: one Open camera button
+  (the phone's camera, via the file picker), photo preview, job
+  description input with voice input, and the results area. The page footer shows the app version
+  (v9), so a phone screenshot settles which build is running. On
   load, the page restores the saved job (GET /api/job), so leaving
   the app and coming back shows the manual instead of an empty form.
 - `app.js` — frontend logic and the API client. It talks only to this

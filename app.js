@@ -4,11 +4,10 @@
 
 const $ = (id) => document.getElementById(id);
 
-const video = $("camera");
 const preview = $("preview");
-const startCameraBtn = $("startCamera");
-const captureBtn = $("capture");
+const cameraBtn = $("cameraBtn");
 const fileInput = $("fileInput");
+const fileNameEl = $("fileName");
 const taskInput = $("task");
 const micBtn = $("micBtn");
 const micHint = $("micHint");
@@ -32,7 +31,6 @@ const followupInput = $("followup");
 const followupBtn = $("followupBtn");
 const followupStatus = $("followupStatus");
 
-let stream = null;
 let photoDataUrl = null;
 let currentSteps = [];
 let currentParts = [];
@@ -62,51 +60,23 @@ function downscaleDataUrl(dataUrl, done) {
 }
 
 // --- Camera ---
-startCameraBtn.addEventListener("click", async () => {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false,
-    });
-    video.srcObject = stream;
-    video.hidden = false;
-    preview.hidden = true;
-    captureBtn.disabled = false;
-    statusEl.textContent = "";
-  } catch (err) {
-    statusEl.textContent = "Camera unavailable — use the file upload instead.";
-  }
-});
-
-captureBtn.addEventListener("click", () => {
-  // Draw already downscaled: the capture canvas itself stays small,
-  // which is what keeps the phone's memory out of trouble.
-  const scale = Math.min(
-    1,
-    MAX_PHOTO_EDGE / Math.max(video.videoWidth, video.videoHeight)
-  );
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(video.videoWidth * scale);
-  canvas.height = Math.round(video.videoHeight * scale);
-  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-  photoDataUrl = canvas.toDataURL("image/jpeg", 0.8);
-  preview.src = photoDataUrl;
-  preview.hidden = false;
-  video.hidden = true;
-  if (stream) stream.getTracks().forEach((t) => t.stop());
-  captureBtn.disabled = true;
-});
+// The phone's camera lives in the file picker: tapping Open camera
+// opens the system camera (capture="environment"), and the photo
+// comes back through the file input. The old live-preview buttons
+// never worked on the plain Wi-Fi page, so they are gone — one
+// camera button, and it works as Open camera.
+cameraBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   const file = fileInput.files[0];
   if (!file) return;
+  fileNameEl.textContent = file.name;
   const reader = new FileReader();
   reader.onload = () => {
     downscaleDataUrl(reader.result, (small) => {
       photoDataUrl = small;
       preview.src = small;
       preview.hidden = false;
-      video.hidden = true;
     });
   };
   reader.readAsDataURL(file);

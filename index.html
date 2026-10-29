@@ -34,14 +34,13 @@
 
 <div class="card">
   <h2>1. Show the machine</h2>
-  <video id="camera" autoplay playsinline muted hidden></video>
   <img id="preview" class="preview" hidden alt="Captured machine photo">
   <div class="row">
-    <button id="startCamera" class="secondary">Open camera</button>
-    <button id="capture" disabled>Take photo</button>
+    <button id="cameraBtn">📷 Open camera</button>
   </div>
-  <p class="hint">No camera? Use the upload below instead.</p>
-  <input type="file" id="fileInput" accept="image/*" capture="environment">
+  <p class="hint">Opens your camera — take the photo, and it attaches here.</p>
+  <input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
+  <p class="hint" id="fileName"></p>
 </div>
 
 <div class="card">
@@ -93,6 +92,6 @@
 </div>
 
 <script src="app.js"></script>
-<p class="hint version">WrenchVision v8</p>
+<p class="hint version">WrenchVision v9</p>
 </body>
 </html>

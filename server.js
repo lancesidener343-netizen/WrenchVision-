@@ -67,7 +67,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v12";
+const VERSION = "v13";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -622,17 +622,58 @@ function parseSamLargestBox(text) {
 // time; a concept with no box simply gets no marker. Never
 // throws: every failure degrades to "no regions" and the
 // caller falls back to the schematic.
+// SAM is weak with complicated phrases ("Display screen module") and
+// strong with short nouns ("screen"). Simplify each callout to one
+// short noun for the SAM prompt; the marker number still matches the
+// original callout order. Unmapped phrases fall back to the full text.
+function simplifyConcept(text) {
+  const lower = String(text || "").toLowerCase();
+  const rules = [
+    ["spark plug", ["spark plug"]],
+    ["cable", ["cable", "ribbon", "wire"]],
+    ["screen", ["screen", "display", "lcd"]],
+    ["knob", ["knob", "potentiometer"]],
+    ["circuit board", ["pcb", "board"]],
+    ["chassis", ["chassis", "housing"]],
+    ["panel", ["panel"]],
+    ["button", ["button"]],
+    ["battery", ["battery"]],
+    ["tank", ["tank"]],
+    ["filter", ["filter"]],
+    ["fuse", ["fuse"]],
+    ["pump", ["pump"]],
+    ["engine", ["engine"]],
+    ["wheel", ["wheel"]],
+    ["handle", ["handle"]],
+    ["switch", ["switch"]],
+    ["motor", ["motor"]],
+    ["microphone", ["microphone"]],
+    ["slider", ["slider", "fader"]],
+    ["plug", ["plug"]],
+    ["port", ["port"]],
+  ];
+  for (const [simple, keys] of rules) {
+    if (keys.some((k) => lower.includes(k))) return simple;
+  }
+  return String(text || "").trim();
+}
+
 async function segmentPhoto(apiKey, photoDataUrl, callouts) {
   const regions = [];
   let width = 0;
   let height = 0;
   // Keep each concept's original callout index: the marker
   // number must match the callout list order, even when an
-  // empty label is skipped or two callouts share a label.
-  const concepts = callouts
-    .map((c, index) => ({ index, text: String(c || "").trim() }))
-    .filter((c) => c.text)
-    .slice(0, SAM_MAX_CALLOUTS);
+  // empty label is skipped or two callouts share a simplified noun
+  // (the first callout wins; the other simply gets no marker).
+  const concepts = [];
+  const seen = new Set();
+  for (let index = 0; index < callouts.length && concepts.length < SAM_MAX_CALLOUTS; index++) {
+    const text = simplifyConcept(callouts[index]);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    concepts.push({ index, text });
+  }
   for (let i = 0; i < concepts.length; i++) {
     let text = "";
     try {

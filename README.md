@@ -51,6 +51,12 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   positions. A page reload has no photo in memory, so it renders the
   schematic; a follow-up keeps the photo markers only when the
   callout list is unchanged.
+- (v13 fix): SAM prompts are simplified from full callout phrases to
+  short nouns ("Display screen module" -> "screen", "Volume control
+  potentiometer" -> "knob"), because SAM is weak with complicated
+  phrases and strong with short ones. Marker numbers still match the
+  original callout order; duplicate nouns are sent once, first
+  callout wins.
 
 ## Demo machines
 

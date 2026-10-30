@@ -42,6 +42,15 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   component set and labeled illustrative, plus links to the factory
   owner's manual and Honda's free parts catalog for the true exploded
   diagrams (EU7000is only, so far).
+- A photo-anchored diagram (v12): after Generate, sam-3.1 locates
+  each callout part in the user's actual photo, and the diagram area
+  shows that photo with numbered gold markers on the located parts.
+  A part SAM cannot see gets no marker, and when no part is located
+  the diagram falls back to the schematic — never a guessed region
+  presented as a part. Markers are detections, not verified part
+  positions. A page reload has no photo in memory, so it renders the
+  schematic; a follow-up keeps the photo markers only when the
+  callout list is unchanged.
 
 ## Demo machines
 

@@ -38,15 +38,47 @@
 // steps; Generate waits for the photo and retries once on empty
 // output; and a job that cannot reach the server queues on the
 // phone and sends when it is back on the network.
+//
+// v12: photo-anchored realistic 2D diagrams. After Generate, the
+// server runs sam-3.1 (Meta's segmentation model, same API key)
+// once per callout concept over the user's photo and, when it
+// locates a part, returns that part's detected box so the client
+// can draw numbered gold markers on the ACTUAL photo instead of
+// the generated schematic. SAM is conservative: for a part it
+// cannot see (battery inside the case, carburetor on an EFI
+// machine) it returns nothing rather than a guessed region, and
+// a concept it cannot ground (multi-concept prompts) also
+// returns nothing — so a part with no box simply gets no
+// marker, and when no part is located at all the diagram falls
+// back exactly to the generated schematic. Boxes are detected
+// regions for a concept, never verified part positions, and the
+// client caption says so. The mask blobs SAM returns are not
+// decoded: boxes are the honest, verifiable region. If SAM
+// fails, times out, or the photo is absent, the manual still
+// returns with the schematic — segmentation never blocks it.
+// A follow-up keeps the photo regions only when the callout
+// list is unchanged; otherwise it falls back to the schematic,
+// because regions belong to callout concepts. A page reload
+// has no photo in memory, so it also renders the schematic —
+// the same as the photo preview today.
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v11";
+const VERSION = "v12";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
+// sam-3.1 does NOT work on /v1/chat/completions (that endpoint
+// answers 404 "Use /v1/responses") and its non-streaming
+// Responses output is empty: the segmentation records only
+// arrive on the streamed output_text deltas. So SAM calls use
+// the streaming Responses endpoint and accumulate deltas.
+const SAM_MODEL = "sam-3.1";
+const SAM_URL = "https://api.meta.ai/v1/responses";
+const SAM_MAX_CALLOUTS = 8;
+const SAM_TIMEOUT_MS = 30000;
 
 // Compact Honda EU7000is factory reference, verified Oct 27 2026
 // from the 2023 owner's manual (00X31-Z37-6230). Facts only — the
@@ -277,6 +309,21 @@ async function handleGenerate(req, res) {
     return;
   }
 
+  // v12: photo-anchored diagram. Best effort only — a failure
+  // here must not touch the manual that is already built.
+  if (input.photo && Array.isArray(manual.callouts) && manual.callouts.length) {
+    try {
+      const seg = await segmentPhoto(apiKey, input.photo, manual.callouts);
+      if (seg && seg.regions.length > 0) {
+        manual.photoRegions = seg.regions;
+        manual.photoWidth = seg.width;
+        manual.photoHeight = seg.height;
+      }
+    } catch {
+      // Segmentation failed — the schematic path still serves.
+    }
+  }
+
   currentJob = { machine: manual.machine, task: input.task || "", manual };
   saveJob();
 
@@ -440,6 +487,23 @@ async function handleFollowup(req, res) {
       "partsUrl.",
   ].filter(Boolean).join("\n");
 
+  // v12: photo regions belong to callout concepts. Keep them
+  // only when the follow-up left the callout list untouched;
+  // otherwise the regions could point at parts that are no
+  // longer listed, and the schematic takes over instead.
+  const oldCallouts = currentJob.manual
+    ? JSON.stringify(currentJob.manual.callouts || [])
+    : null;
+  const oldRegions = currentJob.manual
+    ? currentJob.manual.photoRegions
+    : null;
+  const oldPhotoWidth = currentJob.manual
+    ? currentJob.manual.photoWidth
+    : null;
+  const oldPhotoHeight = currentJob.manual
+    ? currentJob.manual.photoHeight
+    : null;
+
   let manual;
   try {
     manual = await runManualLoop(apiKey, [
@@ -458,6 +522,19 @@ async function handleFollowup(req, res) {
       error: "The model service returned an error. Please try again.",
     }));
     return;
+  }
+
+  if (
+    oldRegions &&
+    oldRegions.length > 0 &&
+    oldCallouts !== null &&
+    JSON.stringify(manual.callouts || []) === oldCallouts &&
+    Number.isFinite(oldPhotoWidth) &&
+    Number.isFinite(oldPhotoHeight)
+  ) {
+    manual.photoRegions = oldRegions;
+    manual.photoWidth = oldPhotoWidth;
+    manual.photoHeight = oldPhotoHeight;
   }
 
   currentJob = { machine: manual.machine, task: currentJob.task, manual };
@@ -485,6 +562,167 @@ async function callModel(apiKey, messages, maxTokens) {
   }
   const apiData = await apiRes.json();
   return apiData.choices?.[0]?.message?.content || "";
+}
+
+// SAM 3.1 segmentation, v12 only. The streamed output text is
+// one frame line like:
+//   <0f>0<|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|><|mask;...|>
+// A concept can return several boxes (one per instance, e.g.
+// "handle"); the largest by area is the main instance and the
+// only one kept. Mask blobs are ignored on purpose — boxes are
+// the verifiable region. Returns null when nothing usable is
+// in the text: empty output, no box tag, or an invalid box.
+function parseSamLargestBox(text) {
+  if (typeof text !== "string" || !text) {
+    return null;
+  }
+  const tagRe = /<\|box;x1=(-?[\d.]+);y1=(-?[\d.]+);x2=(-?[\d.]+);y2=(-?[\d.]+);w=(-?[\d.]+);h=(-?[\d.]+)\|>/g;
+  let best = null;
+  let match;
+  while ((match = tagRe.exec(text)) !== null) {
+    const x1 = Number(match[1]);
+    const y1 = Number(match[2]);
+    const x2 = Number(match[3]);
+    const y2 = Number(match[4]);
+    const w = Number(match[5]);
+    const h = Number(match[6]);
+    if (![x1, y1, x2, y2, w, h].every(Number.isFinite)) {
+      continue;
+    }
+    if (!(w > 0 && h > 0 && x2 > x1 && y2 > y1)) {
+      continue;
+    }
+    // Clamp to the image the model saw; a box outside it is
+    // not a region of this photo.
+    const cx1 = Math.max(0, Math.min(x1, w));
+    const cy1 = Math.max(0, Math.min(y1, h));
+    const cx2 = Math.max(0, Math.min(x2, w));
+    const cy2 = Math.max(0, Math.min(y2, h));
+    if (!(cx2 > cx1 && cy2 > cy1)) {
+      continue;
+    }
+    const area = (cx2 - cx1) * (cy2 - cy1);
+    if (!best || area > best.area) {
+      best = {
+        box: { x1: cx1, y1: cy1, x2: cx2, y2: cy2 },
+        width: w,
+        height: h,
+        area,
+      };
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  return { box: best.box, width: best.width, height: best.height };
+}
+
+// One SAM call per callout concept. Multi-concept prompts
+// return nothing on this endpoint, so concepts go one at a
+// time; a concept with no box simply gets no marker. Never
+// throws: every failure degrades to "no regions" and the
+// caller falls back to the schematic.
+async function segmentPhoto(apiKey, photoDataUrl, callouts) {
+  const regions = [];
+  let width = 0;
+  let height = 0;
+  // Keep each concept's original callout index: the marker
+  // number must match the callout list order, even when an
+  // empty label is skipped or two callouts share a label.
+  const concepts = callouts
+    .map((c, index) => ({ index, text: String(c || "").trim() }))
+    .filter((c) => c.text)
+    .slice(0, SAM_MAX_CALLOUTS);
+  for (let i = 0; i < concepts.length; i++) {
+    let text = "";
+    try {
+      const apiRes = await fetch(SAM_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: SAM_MODEL,
+          stream: true,
+          input: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: concepts[i].text },
+              { type: "input_image", image_url: photoDataUrl },
+            ],
+          }],
+        }),
+        signal: AbortSignal.timeout(SAM_TIMEOUT_MS),
+      });
+      if (!apiRes.ok || !apiRes.body) {
+        continue;
+      }
+      // Accumulate streamed output_text deltas; the done event
+      // carries the full text as a fallback when deltas are
+      // absent. Non-streamed SAM output is empty, so the stream
+      // is required, not optional.
+      const reader = apiRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let doneText = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buf += decoder.decode(value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf("\n\n")) !== -1) {
+          const event = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const dataAt = event.indexOf("data: ");
+          if (dataAt === -1) {
+            continue;
+          }
+          let data;
+          try {
+            data = JSON.parse(event.slice(dataAt + 6));
+          } catch {
+            continue;
+          }
+          if (data.type === "response.output_text.delta" && typeof data.delta === "string") {
+            text += data.delta;
+          } else if (data.type === "response.output_text.done" && typeof data.text === "string") {
+            doneText = data.text;
+          }
+        }
+      }
+      if (!text) {
+        text = doneText;
+      }
+    } catch {
+      continue;
+    }
+    const found = parseSamLargestBox(text);
+    if (!found) {
+      continue;
+    }
+    // All boxes must share the first call's image dimensions —
+    // they all segment the same photo, so a mismatch means a
+    // bad parse, not a second photo.
+    if (!width) {
+      width = found.width;
+      height = found.height;
+    } else if (found.width !== width || found.height !== height) {
+      continue;
+    }
+    regions.push({
+      calloutIndex: concepts[i].index,
+      label: concepts[i].text,
+      box: found.box,
+    });
+  }
+  if (!regions.length) {
+    return null;
+  }
+  return { regions, width, height };
 }
 
 function tryParseFlags(raw) {

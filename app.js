@@ -206,7 +206,53 @@ function renderManual(data) {
     .filter(Boolean)
     .join(" — ");
   diagramBox.innerHTML = "";
-  if (data.diagramSvg) {
+  // v12: photo-anchored diagram. Only when the server located at
+  // least one part AND this page still holds the photo: a page
+  // reload has no photo in memory, so it renders the schematic
+  // instead — the same as the photo preview today. Markers are
+  // detected regions for a callout concept, never verified part
+  // positions, and the caption says so; parts with no marker
+  // were not located in this photo, not missing from the job.
+  const regions = Array.isArray(data.photoRegions) ? data.photoRegions : [];
+  if (
+    regions.length &&
+    photoDataUrl &&
+    Number.isFinite(data.photoWidth) && data.photoWidth > 0 &&
+    Number.isFinite(data.photoHeight) && data.photoHeight > 0
+  ) {
+    const wrap = document.createElement("div");
+    wrap.className = "photo-diagram";
+    const img = document.createElement("img");
+    img.src = photoDataUrl;
+    img.alt = "Your machine photo with located parts marked";
+    img.className = "preview";
+    wrap.appendChild(img);
+    regions.forEach((r) => {
+      const b = r.box || {};
+      const left = (b.x1 / data.photoWidth) * 100;
+      const top = (b.y1 / data.photoHeight) * 100;
+      const w = ((b.x2 - b.x1) / data.photoWidth) * 100;
+      const h = ((b.y2 - b.y1) / data.photoHeight) * 100;
+      if (!(w > 0 && h > 0 && left >= 0 && top >= 0)) return;
+      const box = document.createElement("div");
+      box.className = "photo-box";
+      box.style.left = left + "%";
+      box.style.top = top + "%";
+      box.style.width = w + "%";
+      box.style.height = h + "%";
+      const num = document.createElement("span");
+      num.className = "photo-num";
+      num.textContent = String((r.calloutIndex || 0) + 1);
+      box.appendChild(num);
+      wrap.appendChild(box);
+    });
+    diagramBox.appendChild(wrap);
+    const cap = document.createElement("p");
+    cap.className = "hint";
+    cap.textContent =
+      "Photo of your machine — gold markers show where the model located each part; parts without a marker weren't located in this photo.";
+    diagramBox.appendChild(cap);
+  } else if (data.diagramSvg) {
     // Server-sanitized SVG only; nothing else is injected as HTML.
     diagramBox.innerHTML = data.diagramSvg;
     const cap = document.createElement("p");

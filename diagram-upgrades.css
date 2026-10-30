@@ -27,7 +27,9 @@
   visibility: hidden; /* shown once positioned, so it never flashes at 0,0 */
 }
 
-/* Leader-line overlay: fixed, viewport coordinates, never blocks taps. */
+/* Leader-line overlay: fixed, viewport coordinates, never blocks taps.
+   Lines run badge-to-label-chip, both ends on the photo, so no line
+   ever leaves the diagram. */
 #du-leaders {
   position: fixed;
   inset: 0;
@@ -44,9 +46,6 @@
 #du-leaders line.du-leader-active {
   stroke-width: 3;
   opacity: 1;
-}
-#du-leaders circle {
-  fill: #d4af37;
 }
 
 /* Part-shaped outline overlay: absolute over the photo, in the

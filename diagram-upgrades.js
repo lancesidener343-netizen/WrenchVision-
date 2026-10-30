@@ -11,8 +11,10 @@
 //      list renderManual already wrote (#callouts li, same order as
 //      the marker numbers). No text is invented: a marker with no
 //      matching callout entry gets no label.
-//   2. Leader lines from each marker badge to its callout entry,
+//   2. Leader lines from each marker badge to its own label chip,
 //      drawn in a fixed viewport SVG and redrawn on scroll/resize.
+//      Both ends sit on the photo, so no line ever leaves the
+//      diagram or crosses the caption and steps below it.
 //   3. Tap-to-zoom: tapping a marker opens a full-screen view of
 //      that marker's region of the photo; tapping anywhere, the
 //      close button, or Escape returns to the full view.
@@ -702,14 +704,80 @@
     if (zoomOverlay) closeZoom();
   }
 
+  // Position one label chip beside its marker, entirely inside the
+  // photo. Tries right, left, below, above, in that order, and
+  // clamps into the photo as a last resort. Labels live in the
+  // wrap (the positioned ancestor), never in the box: the old code
+  // appended them to the box but positioned them in wrap
+  // coordinates, which double-counted the box offset and shoved
+  // right-edge labels off the photo.
+  function placeLabel(wrap, box, label) {
+    var wr = wrap.getBoundingClientRect();
+    var br = box.getBoundingClientRect();
+    var bx = br.left - wr.left;
+    var by = br.top - wr.top;
+    var lw = label.offsetWidth || 0;
+    var lh = label.offsetHeight || 0;
+    var GAP = 6;
+    var spots = [
+      { left: bx + br.width + GAP, top: by },
+      { left: bx - lw - GAP, top: by },
+      { left: bx, top: by + br.height + GAP },
+      { left: bx, top: by - lh - GAP },
+    ];
+    var pick = null;
+    for (var s = 0; s < spots.length; s++) {
+      var sp = spots[s];
+      if (
+        sp.left >= 0 &&
+        sp.top >= 0 &&
+        sp.left + lw <= wr.width &&
+        sp.top + lh <= wr.height
+      ) {
+        pick = sp;
+        break;
+      }
+    }
+    if (!pick) {
+      // Nothing fits cleanly: clamp the first choice (right of the
+      // box) inside the photo rather than letting it clip.
+      pick = {
+        left: Math.max(0, Math.min(spots[0].left, wr.width - lw)),
+        top: Math.max(0, Math.min(spots[0].top, wr.height - lh)),
+      };
+    }
+    label.style.left = pick.left + "px";
+    label.style.top = pick.top + "px";
+    label.style.visibility = "visible";
+  }
+
+  // Recompute every label position from current layout (resize,
+  // orientation change), then redraw the leaders to match.
+  function repositionLabels() {
+    try {
+      var wrap = diagramBox.querySelector(".photo-diagram");
+      if (!wrap) return;
+      var boxes = wrap.querySelectorAll(".photo-box");
+      for (var i = 0; i < boxes.length; i++) {
+        var num = boxes[i].dataset.duNum;
+        if (!num) continue;
+        var label = wrap.querySelector(
+          ".du-label[data-du-num=\"" + num + "\"]"
+        );
+        if (label) placeLabel(wrap, boxes[i], label);
+      }
+      drawLeaders();
+    } catch (err) {
+      if (window.console) console.warn("diagram-upgrades: reposition failed", err);
+    }
+  }
+
   function drawLeaders() {
     try {
       removeLeaders();
       if (zoomOverlay) return;
       var wrap = diagramBox.querySelector(".photo-diagram");
       if (!wrap) return;
-      var items = calloutsEl.querySelectorAll("li");
-      if (!items.length) return;
       var svgNS = "http://www.w3.org/2000/svg";
       var svg = document.createElementNS(svgNS, "svg");
       svg.setAttribute("id", LEADER_SVG_ID);
@@ -721,23 +789,42 @@
         var num = box.dataset.duNum
           ? parseInt(box.dataset.duNum, 10)
           : NaN;
-        if (!badge || !num || num < 1 || num > items.length) continue;
+        if (!badge || !num) continue;
+        // The label chip is the line's other end: both ends sit on
+        // the photo, so the segment never leaves the diagram.
+        var label = wrap.querySelector(
+          ".du-label[data-du-num=\"" + num + "\"]"
+        );
+        if (!label) continue;
         var from = badge.getBoundingClientRect();
-        var to = items[num - 1].getBoundingClientRect();
+        var to = label.getBoundingClientRect();
         if (!from.width && !from.height) continue;
+        if (!to.width && !to.height) continue;
+        var bx = from.left + from.width / 2;
+        var by = from.top + from.height / 2;
+        // Aim at the midpoint of the label edge facing the badge.
+        var tx, ty;
+        if (to.left >= from.left + from.width) {
+          tx = to.left;
+          ty = to.top + to.height / 2;
+        } else if (to.left + to.width <= from.left) {
+          tx = to.left + to.width;
+          ty = to.top + to.height / 2;
+        } else if (to.top >= from.top + from.height) {
+          tx = to.left + to.width / 2;
+          ty = to.top;
+        } else {
+          tx = to.left + to.width / 2;
+          ty = to.top + to.height;
+        }
         var line = document.createElementNS(svgNS, "line");
-        line.setAttribute("x1", from.left + from.width / 2);
-        line.setAttribute("y1", from.top + from.height / 2);
-        line.setAttribute("x2", to.left + 4);
-        line.setAttribute("y2", to.top + to.height / 2);
+        line.setAttribute("x1", bx);
+        line.setAttribute("y1", by);
+        line.setAttribute("x2", tx);
+        line.setAttribute("y2", ty);
         line.setAttribute("data-du-num", String(num));
         if (num === zoomedNum) line.setAttribute("class", "du-leader-active");
         svg.appendChild(line);
-        var dot = document.createElementNS(svgNS, "circle");
-        dot.setAttribute("cx", to.left + 4);
-        dot.setAttribute("cy", to.top + to.height / 2);
-        dot.setAttribute("r", 3);
-        svg.appendChild(dot);
         drawn++;
       }
       if (drawn) document.body.appendChild(svg);
@@ -826,6 +913,18 @@
       var boxes = wrap.querySelectorAll(".photo-box");
       if (!boxes.length) return;
       wrap.classList.add("du-enhanced");
+      // Labels live in the wrap now: drop any from a previous
+      // enhance (and their flags) so positions are recomputed
+      // fresh instead of stacking or going stale.
+      var oldLabels = wrap.querySelectorAll(".du-label");
+      for (var li = 0; li < oldLabels.length; li++) {
+        if (oldLabels[li].parentNode) {
+          oldLabels[li].parentNode.removeChild(oldLabels[li]);
+        }
+      }
+      for (var bi = 0; bi < boxes.length; bi++) {
+        delete boxes[bi].dataset.duLabeled;
+      }
       // Rebuild the outline overlay from scratch each time, so a
       // re-render can never stack two copies of it.
       var oldOverlay = wrap.querySelector("#" + OUTLINE_SVG_ID);
@@ -850,7 +949,6 @@
         wrap.appendChild(outlineSvg);
         return outlineSvg;
       }
-      var wrapRect = wrap.getBoundingClientRect();
       for (var i = 0; i < boxes.length; i++) {
         (function (box) {
           var badge = box.querySelector(".photo-num");
@@ -870,20 +968,9 @@
               var label = document.createElement("span");
               label.className = "du-label";
               label.textContent = text;
-              box.appendChild(label);
-              // Position after layout: right of the box, or below
-              // it when the right side would overflow the photo.
-              var boxRect = box.getBoundingClientRect();
-              var left = boxRect.left - wrapRect.left + boxRect.width + 6;
-              var top = boxRect.top - wrapRect.top;
-              var labelWidth = label.offsetWidth || 0;
-              if (wrapRect.width && left + labelWidth > wrapRect.width) {
-                left = boxRect.left - wrapRect.left;
-                top = boxRect.top - wrapRect.top + boxRect.height + 6;
-              }
-              label.style.left = left + "px";
-              label.style.top = top + "px";
-              label.style.visibility = "visible";
+              label.dataset.duNum = String(num);
+              wrap.appendChild(label);
+              placeLabel(wrap, box, label);
             }
           }
           // Part-shaped outline, in place of (not on top of) the
@@ -922,7 +1009,7 @@
   });
   observer.observe(diagramBox, { childList: true });
 
-  var redrawSoon = debounce(drawLeaders, 120);
+  var redrawSoon = debounce(repositionLabels, 120);
   window.addEventListener("resize", redrawSoon);
   window.addEventListener("scroll", redrawSoon, true);
   window.addEventListener("orientationchange", redrawSoon);
@@ -940,6 +1027,7 @@
   window.WrenchVisionDiagramUpgrades = {
     enhanceNow: enhance,
     redrawLeaders: drawLeaders,
+    repositionLabels: repositionLabels,
     closeZoom: closeZoom,
     decodeMaskForTest: decodeMaskRaster,
     maskPathForTest: rasterToMaskPaths,

@@ -1,0 +1,129 @@
+/* WrenchVision 2D diagram upgrades — plug-in styles.
+   Additive only: nothing here overrides the base app's layout.
+   Loaded after the base styles via a <link> tag in index.html. */
+
+/* Marker boxes become tappable once the plug-in enhances them. */
+.du-enhanced .photo-box {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Part-name label chip beside each marker. pointer-events none so
+   taps land on the marker box underneath, not on the chip. */
+.du-label {
+  position: absolute;
+  z-index: 2;
+  max-width: 46%;
+  padding: 2px 8px;
+  border: 1px solid #d4af37;
+  border-radius: 999px;
+  background: #1c1c1c;
+  color: #f0ead8;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.25;
+  pointer-events: none;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  visibility: hidden; /* shown once positioned, so it never flashes at 0,0 */
+}
+
+/* Leader-line overlay: fixed, viewport coordinates, never blocks taps. */
+#du-leaders {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 5;
+}
+#du-leaders line {
+  stroke: #d4af37;
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+#du-leaders line.du-leader-active {
+  stroke-width: 3;
+  opacity: 1;
+}
+#du-leaders circle {
+  fill: #d4af37;
+}
+
+/* Part-shaped outline overlay: absolute over the photo, in the
+   photo's percent space (viewBox 0 0 100 100, non-uniform scale
+   so it tracks the image exactly). pointer-events none so taps
+   still land on the marker boxes underneath. */
+#du-outlines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+#du-outlines path {
+  fill: rgba(212, 175, 55, 0.08);
+  stroke: #d4af37;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+
+/* A marker with a valid outline drops its rectangle border —
+   the outline IS the marker now — but keeps its badge, label,
+   leader line, and zoom target exactly where they were. */
+.du-enhanced .photo-box.du-outlined {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* Callout entry highlighted while its marker is zoomed. */
+.du-callout-active {
+  outline: 2px solid #d4af37;
+  border-radius: 6px;
+}
+
+/* Tap-to-zoom overlay. */
+.du-zoom {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.94);
+  z-index: 50;
+}
+.du-zoom img {
+  position: fixed;
+  transform-origin: 0 0;
+  border: 2px solid #d4af37;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.du-zoom-close {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 51;
+  min-width: 0;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.du-zoom-caption {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 51;
+  max-width: 86vw;
+  padding: 6px 14px;
+  border: 1px solid #d4af37;
+  border-radius: 999px;
+  background: #1c1c1c;
+  color: #f0ead8;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}

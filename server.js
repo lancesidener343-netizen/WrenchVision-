@@ -67,7 +67,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v15";
+const VERSION = "v16";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -150,6 +150,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && req.url === "/app.js") {
       return sendFile(res, "app.js");
+    }
+    // Plug-in diagram upgrades (client-only presentation, no loop
+    // logic): served as plain static files alongside app.js, so
+    // the <script>/<link> tags in index.html actually load.
+    if (
+      req.method === "GET" &&
+      (req.url === "/diagram-upgrades.js" || req.url === "/diagram-upgrades.css")
+    ) {
+      return sendFile(res, req.url.slice(1));
     }
     if (req.method === "GET" && req.url === "/api/job") {
       // Restore within a run: the page reloads the saved job on
@@ -564,28 +573,65 @@ async function callModel(apiKey, messages, maxTokens) {
   return apiData.choices?.[0]?.message?.content || "";
 }
 
-// SAM 3.1 segmentation, v12 only. The streamed output text is
-// one frame line like:
-//   <0f>0<|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|><|mask;...|>
-// A concept can return several boxes (one per instance, e.g.
-// "handle"); the largest by area is the main instance and the
-// only one kept. Mask blobs are ignored on purpose — boxes are
-// the verifiable region. Returns null when nothing usable is
-// in the text: empty output, no box tag, or an invalid box.
-function parseSamLargestBox(text) {
+// SAM 3.1 segmentation, v12 boxes + mask pass-through. The
+// streamed output text is one frame line like:
+//   <0f>0<|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|><|mask;x=0;y=0;data=H,W,payload|>
+// A concept can return several records (one per instance, e.g.
+// "handle"); the largest box by area is the main instance and
+// the only one kept. Each record's mask is paired with its own
+// box: the mask tag nearest the box inside the same record
+// (box-then-mask is what the API emits; mask-then-box is also
+// accepted, per the protocol). The mask is passed through ONLY
+// when it is strictly valid for that box, per Meta's SAM 3
+// protocol (github.com/meta-models/meta-sam, protocol/sam3.md):
+// mask x and y are both 0, the data tuple is H,W,payload with
+// H and W equal to the box interior (x2-x1+1, y2-y1+1), the
+// payload starts with ~ (lossless, the API default) or !
+// (one_bit), and every payload character is in the 85-digit
+// alphabet. Anything less is dropped and the box stands alone
+// — a box is always better than a guessed outline. The client
+// decodes the payload; this server never invents geometry.
+// Returns null when nothing usable is in the text: empty
+// output, no box tag, or an invalid box.
+const MASK_ALPHABET =
+  "!#$%&'()*+-./0123456789:=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{";
+
+function parseTokenFields(body) {
+  const fields = {};
+  for (const part of String(body || "").split(";")) {
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    if (key && !(key in fields)) fields[key] = part.slice(eq + 1).trim();
+  }
+  return fields;
+}
+
+function parseSamLargestRegion(text) {
   if (typeof text !== "string" || !text) {
     return null;
   }
-  const tagRe = /<\|box;x1=(-?[\d.]+);y1=(-?[\d.]+);x2=(-?[\d.]+);y2=(-?[\d.]+);w=(-?[\d.]+);h=(-?[\d.]+)\|>/g;
-  let best = null;
+  const boxRe = /<\|box;([^|]*)\|>/g;
+  const maskRe = /<\|mask;([^|]*)\|>/g;
+  const boxes = [];
+  const masks = [];
   let match;
-  while ((match = tagRe.exec(text)) !== null) {
-    const x1 = Number(match[1]);
-    const y1 = Number(match[2]);
-    const x2 = Number(match[3]);
-    const y2 = Number(match[4]);
-    const w = Number(match[5]);
-    const h = Number(match[6]);
+  while ((match = boxRe.exec(text)) !== null) {
+    boxes.push({ start: match.index, end: match.index + match[0].length, fields: parseTokenFields(match[1]) });
+  }
+  while ((match = maskRe.exec(text)) !== null) {
+    masks.push({ start: match.index, end: match.index + match[0].length, fields: parseTokenFields(match[1]) });
+  }
+  let best = null;
+  for (let i = 0; i < boxes.length; i++) {
+    const f = boxes[i].fields;
+    const x1 = Number(f.x1);
+    const y1 = Number(f.y1);
+    const x2 = Number(f.x2);
+    const y2 = Number(f.y2);
+    const w = Number(f.w);
+    const h = Number(f.h);
     if (![x1, y1, x2, y2, w, h].every(Number.isFinite)) {
       continue;
     }
@@ -602,19 +648,70 @@ function parseSamLargestBox(text) {
       continue;
     }
     const area = (cx2 - cx1) * (cy2 - cy1);
-    if (!best || area > best.area) {
-      best = {
-        box: { x1: cx1, y1: cy1, x2: cx2, y2: cy2 },
-        width: w,
-        height: h,
-        area,
-      };
+    if (best && area <= best.area) {
+      continue;
     }
+    // Pair this box with its record's mask: the nearest mask
+    // tag after the box (before the next box), else the nearest
+    // one before it (after the previous box). A mask from
+    // another record is never borrowed.
+    const nextBoxStart = i + 1 < boxes.length ? boxes[i + 1].start : text.length;
+    const prevBoxEnd = i > 0 ? boxes[i - 1].end : 0;
+    let maskTag = null;
+    for (const m of masks) {
+      if (m.start >= boxes[i].end && m.start < nextBoxStart) {
+        maskTag = m;
+        break;
+      }
+    }
+    if (!maskTag) {
+      for (let j = masks.length - 1; j >= 0; j--) {
+        if (masks[j].end <= boxes[i].start && masks[j].end > prevBoxEnd) {
+          maskTag = masks[j];
+          break;
+        }
+      }
+    }
+    let mask = null;
+    if (maskTag) {
+      const mf = maskTag.fields;
+      // Protocol requires x=0, y=0 and data=H,W,payload. The
+      // mask raster covers exactly the box interior, and the
+      // box must not have needed clamping — otherwise the
+      // raster would no longer align with the displayed box.
+      const data = mf.data || "";
+      const firstComma = data.indexOf(",");
+      const secondComma = firstComma === -1 ? -1 : data.indexOf(",", firstComma + 1);
+      if (
+        mf.x === "0" && mf.y === "0" &&
+        firstComma > 0 && secondComma > firstComma &&
+        cx1 === x1 && cy1 === y1 && cx2 === x2 && cy2 === y2
+      ) {
+        const mh = Number(data.slice(0, firstComma));
+        const mw = Number(data.slice(firstComma + 1, secondComma));
+        const payload = data.slice(secondComma + 1);
+        if (
+          Number.isInteger(mh) && Number.isInteger(mw) &&
+          mh === y2 - y1 + 1 && mw === x2 - x1 + 1 &&
+          (payload[0] === "~" || payload[0] === "!") && payload.length > 1 &&
+          [...payload.slice(1)].every((c) => MASK_ALPHABET.indexOf(c) !== -1)
+        ) {
+          mask = data;
+        }
+      }
+    }
+    best = {
+      box: { x1: cx1, y1: cy1, x2: cx2, y2: cy2 },
+      width: w,
+      height: h,
+      area,
+      mask,
+    };
   }
   if (!best) {
     return null;
   }
-  return { box: best.box, width: best.width, height: best.height };
+  return { box: best.box, width: best.width, height: best.height, mask: best.mask };
 }
 
 // One SAM call per callout concept. Multi-concept prompts
@@ -741,7 +838,7 @@ async function segmentPhoto(apiKey, photoDataUrl, callouts) {
     } catch {
       continue;
     }
-    const found = parseSamLargestBox(text);
+    const found = parseSamLargestRegion(text);
     if (!found) {
       continue;
     }
@@ -754,11 +851,17 @@ async function segmentPhoto(apiKey, photoDataUrl, callouts) {
     } else if (found.width !== width || found.height !== height) {
       continue;
     }
-    regions.push({
+    const region = {
       calloutIndex: concepts[i].index,
       label: concepts[i].text,
       box: found.box,
-    });
+    };
+    // Mask pass-through only: the client decodes it; an
+    // absent or invalid mask simply means the box stands.
+    if (found.mask) {
+      region.mask = found.mask;
+    }
+    regions.push(region);
   }
   if (!regions.length) {
     return null;

@@ -236,6 +236,11 @@ function renderManual(data) {
       if (!(w > 0 && h > 0 && left >= 0 && top >= 0)) return;
       const box = document.createElement("div");
       box.className = "photo-box";
+      // Mask pass-through for the diagram plug-in: inert on
+      // its own, decoded to an outline only when valid.
+      if (typeof r.mask === "string" && r.mask) {
+        box.dataset.duMask = r.mask;
+      }
       box.style.left = left + "%";
       box.style.top = top + "%";
       box.style.width = w + "%";

@@ -5,35 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>WrenchVision — Exploded-View Repair Manual</title>
 <style>
-  :root { color-scheme: light; font-family: system-ui, -apple-system, sans-serif; }
-  body { margin: 0; padding: 16px; max-width: 720px; margin-inline: auto; background: #f6f6f2; color: #1c1c1c; }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  p.sub { color: #555; margin: 0 0 16px; }
-  .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
-  video, img.preview { width: 100%; border-radius: 8px; background: #111; display: block; }
+  :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+  body { margin: 0; padding: 16px; max-width: 720px; margin-inline: auto; background: linear-gradient(180deg, #0b0b0d 0%, #17171b 100%); color: #f0ead8; }
+  h1.wordmark { font-size: 1.9rem; letter-spacing: 0.04em; margin: 8px 0 10px; text-align: center; background: linear-gradient(180deg, #f6d873 0%, #d4af37 55%, #9a7b1e 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 1px #000; text-shadow: 0 2px 0 #000; }
+  .eye { width: 78%; max-width: 420px; height: 96px; margin: 0 auto 16px; border: 2px solid #d4af37; border-radius: 50%; position: relative; background: #101014; box-shadow: 0 0 24px rgba(212,175,55,0.25); }
+  .eye::after { content: ""; position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; transform: translate(-50%, -50%); border-radius: 999px; background: radial-gradient(circle at 50% 50%, #ffe9a3 0%, #d4af37 45%, #6b5510 100%); box-shadow: 0 0 18px rgba(212,175,55,0.8); }
+  p.sub { color: #c9bfa5; margin: 0 0 16px; text-align: center; }
+  .card { background: #1e1e24; border: 1px solid #3a3325; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .card h2, .card h3 { color: #e8c96a; }
+  video, img.preview { width: 100%; border-radius: 8px; background: #111; display: block; border: 2px solid #d4af37; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  button { flex: 1; min-width: 120px; padding: 12px; font-size: 1rem; border: none; border-radius: 8px; background: #14532d; color: #fff; cursor: pointer; }
-  button.secondary { background: #e5e5e5; color: #1c1c1c; }
+  button { flex: 1; min-width: 120px; padding: 12px; font-size: 1rem; font-weight: 700; border: none; border-radius: 8px; background: linear-gradient(180deg, #e8c96a, #c9a227); color: #1c1c1c; cursor: pointer; }
+  button.secondary { background: #2a2a30; color: #e8c96a; border: 1px solid #d4af37; }
   button:disabled { opacity: 0.5; }
-  input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+  input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; border: 1px solid #4a4230; border-radius: 8px; background: #121215; color: #f0ead8; }
   .badge { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
-  .verified { background: #dcfce7; color: #14532d; }
-  .inferred { background: #fef9c3; color: #713f12; }
-  .illustrative { background: #e0e7ff; color: #3730a3; }
-  .diagram { border: 2px dashed #999; border-radius: 8px; padding: 24px 14px; text-align: center; color: #555; margin: 10px 0; }
+  .verified { background: #12351f; color: #8fe3a8; }
+  .inferred { background: #3a2c0a; color: #f0d48a; }
+  .illustrative { background: #232347; color: #b9b9f5; }
+  .diagram { border: 2px dashed #d4af37; border-radius: 8px; padding: 24px 14px; text-align: center; color: #c9bfa5; margin: 10px 0; }
   .photo-diagram { position: relative; }
   .photo-diagram img.preview { width: 100%; }
   .photo-box { position: absolute; border: 3px solid #d4af37; border-radius: 6px; box-sizing: border-box; }
   .photo-num { position: absolute; top: -13px; left: -13px; background: #d4af37; color: #1c1c1c; font-weight: 700; font-size: 0.85rem; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 999px; }
   .callouts { padding-left: 20px; }
-  .error { background: #fee2e2; color: #7f1d1d; padding: 10px; border-radius: 8px; }
-  .hint { color: #666; font-size: 0.85rem; }
-  .version { text-align: center; }
-  ol.steps li { margin-bottom: 8px; }
+  .callouts li::marker, .steps li::marker { color: #d4af37; font-weight: 700; }
+  .error { background: #3d1212; color: #ffb4b4; padding: 10px; border-radius: 8px; }
+  .hint { color: #a89e83; font-size: 0.85rem; }
+  .version { text-align: center; color: #d4af37; }
+  ol.steps li { margin-bottom: 8px; background: #26262e; border-left: 4px solid #d4af37; border-radius: 6px; padding: 10px 10px 10px 12px; list-style-position: inside; }
 </style>
 </head>
 <body>
-<h1>🔧 WrenchVision</h1>
+<h1 class="wordmark">WRENCHVISION</h1>
+<div class="eye" aria-hidden="true"></div>
 <p class="sub">Point your phone at a machine. Get an exploded-view repair manual with a spoken walkthrough.</p>
 
 <div class="card">
@@ -101,6 +106,6 @@
 </div>
 
 <script src="app.js"></script>
-<p class="hint version">WrenchVision v13</p>
+<p class="hint version">WrenchVision v14</p>
 </body>
 </html>

@@ -44,8 +44,8 @@
      iris sit over the video and never block taps. */
   .wv-live { position: fixed; inset: 0; background: rgba(0,0,0,0.94); z-index: 60; }
   .wv-live video { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; border: none; border-radius: 0; }
-  .wv-eye { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 94vw; aspect-ratio: 100 / 60; pointer-events: none; z-index: 61; }
-  .wv-live-cap { position: fixed; left: 50%; top: calc(42% + 28.2vw + 14px); transform: translateX(-50%); z-index: 61; padding: 6px 14px; border: 1px solid #d4af37; border-radius: 999px; background: #1c1c1c; color: #f0ead8; font-weight: 700; text-align: center; pointer-events: none; white-space: nowrap; }
+  .wv-eye { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 94vw; aspect-ratio: 1 / 1; pointer-events: none; z-index: 61; }
+  .wv-live-cap { position: fixed; left: 50%; top: calc(42% + 47vw + 14px); transform: translateX(-50%); z-index: 61; padding: 6px 14px; border: 1px solid #d4af37; border-radius: 999px; background: #1c1c1c; color: #f0ead8; font-weight: 700; text-align: center; pointer-events: none; white-space: nowrap; }
   .wv-live-actions { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 62; display: flex; gap: 8px; }
   ol.steps li { margin-bottom: 8px; background: #26262e; border-left: 4px solid #d4af37; border-radius: 6px; padding: 10px 10px 10px 12px; list-style-position: inside; }
 </style>
@@ -122,6 +122,6 @@
 
 <script src="app.js"></script>
 <script src="diagram-upgrades.js"></script>
-<p class="hint version">WrenchVision v20</p>
+<p class="hint version">WrenchVision v21</p>
 </body>
 </html>

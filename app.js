@@ -172,29 +172,19 @@ async function openLiveView() {
   video.playsInline = true;
   video.muted = true;
   overlay.appendChild(video);
-  // v20: the eye is a full border around the view — an SVG eye path
-  // (pointed corners, gold stroke) with the camera seen through the
-  // center. Replaces the thin ellipse + iris ring: the frame IS the
-  // eye, and the middle stays clear so the machine can be framed.
-  const eyeNS = "http://www.w3.org/2000/svg";
-  const eye = document.createElementNS(eyeNS, "svg");
-  eye.setAttribute("class", "wv-eye");
-  eye.setAttribute("viewBox", "0 0 100 60");
+  // v21: the frame is the eye artwork itself — the logo eye with a
+  // transparent center (eye-frame.png), laid over the video so the
+  // camera shows straight through the middle. Replaces the v20 SVG
+  // eye path; the middle stays clear so the machine can be framed.
+  const eye = document.createElement("img");
+  eye.className = "wv-eye";
+  eye.src = "eye-frame.png";
+  eye.alt = "";
   eye.setAttribute("aria-hidden", "true");
-  const eyePath = document.createElementNS(eyeNS, "path");
-  eyePath.setAttribute("d", "M2,30 Q50,2 98,30 Q50,58 2,30 Z");
-  eyePath.setAttribute("fill", "none");
-  eyePath.setAttribute("stroke", "#d4af37");
-  eyePath.setAttribute("stroke-width", "1.6");
-  eye.appendChild(eyePath);
-  for (const cx of [2, 98]) {
-    const dot = document.createElementNS(eyeNS, "circle");
-    dot.setAttribute("cx", String(cx));
-    dot.setAttribute("cy", "30");
-    dot.setAttribute("r", "1.6");
-    dot.setAttribute("fill", "#d4af37");
-    eye.appendChild(dot);
-  }
+  // The frame file travels separately from the code (see v21 notes):
+  // if it is not in the app folder, the overlay still works — the
+  // video, caption, and buttons stay, just without the frame.
+  eye.onerror = () => eye.remove();
   overlay.appendChild(eye);
   const cap = document.createElement("div");
   cap.className = "wv-live-cap";

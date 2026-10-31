@@ -67,7 +67,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v20";
+const VERSION = "v21";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -141,6 +141,7 @@ const MIME = {
   ".html": "text/html",
   ".js": "application/javascript",
   ".css": "text/css",
+  ".png": "image/png",
 };
 
 const server = http.createServer(async (req, res) => {
@@ -159,6 +160,11 @@ const server = http.createServer(async (req, res) => {
       (req.url === "/diagram-upgrades.js" || req.url === "/diagram-upgrades.css")
     ) {
       return sendFile(res, req.url.slice(1));
+    }
+    // Live-camera eye frame artwork (transparent center, v21): the
+    // overlay <img> loads it from the app directory.
+    if (req.method === "GET" && req.url === "/eye-frame.png") {
+      return sendFile(res, "eye-frame.png");
     }
     if (req.method === "GET" && req.url === "/api/job") {
       // Restore within a run: the page reloads the saved job on

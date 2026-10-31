@@ -57,11 +57,32 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   phrases and strong with short ones. Marker numbers still match the
   original callout order; duplicate nouns are sent once, first
   callout wins.
+- Look (v15, v18): black titanium + gold theme, the real logo art
+  (eye + drip wordmark) in the header, and a gold wrench mark on
+  every clickable button.
+- Diagram upgrades (v16, v17): part-name label chips on the photo,
+  leader lines from marker to label, tap-to-zoom with captions, and
+  SAM mask outlines that trace real part edges where a valid mask
+  exists (otherwise an honest gold box). Labels stay clamped inside
+  the photo.
+- Live camera eye viewfinder (v18–v21, secure contexts only): on
+  https, a Live camera button opens the camera framed by the eye —
+  since v21, the logo eye artwork itself, with a transparent center,
+  so the camera shows straight through the middle. Take photo feeds
+  the same path as the file picker. On plain http the button does
+  not appear and the file-picker camera path is unchanged.
+- Low-memory photo fix (v19): the file-picker path decodes via
+  createImageBitmap straight to a ≤1280px canvas and releases the
+  bitmap at once, instead of holding the full file in memory at the
+  camera→browser handoff.
 
 ## Demo machines
 
 - **Main demo:** Honda EU7000is generator (live walkthrough).
 - **Fallback demo case:** Cat 45 pump.
+- **Also proven in testing:** Hicall C100 Pro live sound card,
+  identified from the photo alone, with photo-anchored diagrams,
+  follow-up updates, parts list, and spoken walkthrough.
 
 ## Run it locally
 
@@ -76,7 +97,14 @@ To run it over https instead — which the phone camera and microphone
 need, since both stay silent on a plain http:// address — open this
 repo in a GitHub Codespace: the forwarded port 3000 comes up as https
 and the camera and mic work. In the Codespace terminal, set the key
-and start the server the same way as above.
+and start the server the same way as above. On https, a Live camera
+button also appears, framing the camera view with the eye (see
+above).
+
+Live-camera frame file: the overlay loads `eye-frame.png` from the
+app directory (the logo eye with a transparent center). If it is not
+in your copy, place it alongside `server.js` — without it the overlay
+still works, just without the frame.
 
 To enable live manual generation, set the Meta Model API key as an
 environment variable before starting the server:
@@ -94,7 +122,7 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: one Open camera button
   (the phone's camera, via the file picker), photo preview, job
   description input with voice input, and the results area. The page footer shows the app version
-  (v11), so a phone screenshot settles which build is running. On
+  (v21), so a phone screenshot settles which build is running. On
   load, the page restores the job saved during this server run
   (GET /api/job), so leaving the app and coming back mid-job shows
   the manual instead of an empty form; starting the server is a
@@ -116,5 +144,14 @@ key is not configured instead of showing a manual.
   numbers, a troubleshooting section, a New job button, and the
   offline queue; Generate waits for the photo and retries once on
   empty model output, and errors render as errors, not steps.
+  v12–v13 add SAM photo diagrams; v16–v17 add the diagram upgrades
+  (labels, leader lines, zoom, mask outlines); v21 serves the
+  live-camera frame image.
+- `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
+  plug-in for the diagram upgrades (labels, leader lines,
+  tap-to-zoom, SAM mask outlines). No loop logic lives here.
+- `eye-frame.png` — the live-camera frame image (logo eye, center
+  transparent), loaded by the overlay on secure contexts. See the
+  run-it-locally note above if it is missing from your copy.
 - `.devcontainer/devcontainer.json` — one-click GitHub Codespace
   setup (Node 24, port 3000 forwarded as https).

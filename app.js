@@ -73,22 +73,116 @@ function downscaleDataUrl(dataUrl, done) {
 // camera button, and it works as Open camera.
 cameraBtn.addEventListener("click", () => fileInput.click());
 
+// One attach path for both photo sources: the file picker and the
+// live viewfinder below feed it the same way.
+function attachPhotoDataUrl(dataUrl, name) {
+  fileNameEl.textContent = name;
+  photoPending = true;
+  downscaleDataUrl(dataUrl, (small) => {
+    photoDataUrl = small;
+    photoPending = false;
+    preview.src = small;
+    preview.hidden = false;
+  });
+}
+
 fileInput.addEventListener("change", () => {
   const file = fileInput.files[0];
   if (!file) return;
-  fileNameEl.textContent = file.name;
   const reader = new FileReader();
-  reader.onload = () => {
-    photoPending = true;
-    downscaleDataUrl(reader.result, (small) => {
-      photoDataUrl = small;
-      photoPending = false;
-      preview.src = small;
-      preview.hidden = false;
-    });
-  };
+  reader.onload = () => attachPhotoDataUrl(reader.result, file.name);
   reader.readAsDataURL(file);
 });
+
+// --- Live camera with the eye viewfinder (secure contexts only) ---
+// getUserMedia needs https, so on the plain Wi-Fi page this whole
+// block stays dormant: no extra button, no behavior change, and the
+// file-picker camera above is untouched. On a secure origin
+// (Codespaces https) a Live camera button appears next to Open
+// camera: the preview wears the gold eye frame from the logo, and
+// Take photo feeds the exact same attach path the file picker uses.
+const liveCameraOK = !!(
+  window.isSecureContext &&
+  navigator.mediaDevices &&
+  navigator.mediaDevices.getUserMedia
+);
+let liveStream = null;
+function stopLiveStream() {
+  if (liveStream) {
+    liveStream.getTracks().forEach((t) => t.stop());
+    liveStream = null;
+  }
+}
+function closeLiveView() {
+  stopLiveStream();
+  const overlay = document.getElementById("wvLive");
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+}
+async function openLiveView() {
+  const overlay = document.createElement("div");
+  overlay.className = "wv-live";
+  overlay.id = "wvLive";
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = true;
+  overlay.appendChild(video);
+  const eye = document.createElement("div");
+  eye.className = "wv-eye";
+  overlay.appendChild(eye);
+  const iris = document.createElement("div");
+  iris.className = "wv-eye-iris";
+  overlay.appendChild(iris);
+  const cap = document.createElement("div");
+  cap.className = "wv-live-cap";
+  cap.textContent = "Look into the eye — frame the machine";
+  overlay.appendChild(cap);
+  const actions = document.createElement("div");
+  actions.className = "wv-live-actions";
+  const takeBtn = document.createElement("button");
+  takeBtn.type = "button";
+  takeBtn.textContent = "Take photo";
+  takeBtn.addEventListener("click", () => {
+    try {
+      if (!video.videoWidth) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+      attachPhotoDataUrl(canvas.toDataURL("image/jpeg", 0.8), "live-capture.jpg");
+      closeLiveView();
+    } catch {
+      // Capture failed — the overlay stays up; Close and Open
+      // camera still work, and nothing else is disturbed.
+    }
+  });
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "secondary";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", closeLiveView);
+  actions.appendChild(takeBtn);
+  actions.appendChild(closeBtn);
+  overlay.appendChild(actions);
+  document.body.appendChild(overlay);
+  try {
+    liveStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false,
+    });
+    video.srcObject = liveStream;
+  } catch {
+    cap.textContent = "Camera unavailable here — use Open camera instead.";
+  }
+}
+if (liveCameraOK) {
+  const liveBtn = document.createElement("button");
+  liveBtn.type = "button";
+  liveBtn.id = "liveBtn";
+  liveBtn.textContent = "Live camera";
+  liveBtn.addEventListener("click", openLiveView);
+  cameraBtn.parentNode.appendChild(liveBtn);
+}
 
 // --- Voice input (browser speech recognition when available) ---
 const SpeechRecognition =

@@ -18,6 +18,10 @@
   video, img.preview { width: 100%; border-radius: 8px; background: #111; display: block; border: 2px solid #d4af37; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   button { flex: 1; min-width: 120px; padding: 12px; font-size: 1rem; font-weight: 700; border: none; border-radius: 8px; background: linear-gradient(180deg, #e8c96a, #c9a227); color: #1c1c1c; cursor: pointer; }
+  /* Clickable buttons are little gold wrenches: one wrench mark on
+     every button (same mark the step cards already use), except the
+     zoom overlay's X button, which stays a plain X. */
+  button:not(.du-zoom-close)::before { content: "🔧"; margin-right: 6px; }
   button.secondary { background: #2a2a30; color: #e8c96a; border: 1px solid #d4af37; }
   button:disabled { opacity: 0.5; }
   input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; font-size: 1rem; border: 1px solid #4a4230; border-radius: 8px; background: #121215; color: #f0ead8; }
@@ -35,6 +39,15 @@
   .error { background: #3d1212; color: #ffb4b4; padding: 10px; border-radius: 8px; }
   .hint { color: #a89e83; font-size: 0.85rem; }
   .version { text-align: center; color: #d4af37; }
+  /* Live-camera eye viewfinder (secure contexts only): the preview
+     wears the gold eye frame from the logo. The eye outline and
+     iris sit over the video and never block taps. */
+  .wv-live { position: fixed; inset: 0; background: rgba(0,0,0,0.94); z-index: 60; }
+  .wv-live video { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; border: none; border-radius: 0; }
+  .wv-eye { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 78vw; height: 44vw; border: 3px solid #d4af37; border-radius: 50%; pointer-events: none; z-index: 61; }
+  .wv-eye-iris { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 54px; height: 54px; border: 3px solid #d4af37; border-radius: 50%; pointer-events: none; z-index: 61; }
+  .wv-live-cap { position: fixed; left: 50%; top: calc(42% + 22vw + 14px); transform: translateX(-50%); z-index: 61; padding: 6px 14px; border: 1px solid #d4af37; border-radius: 999px; background: #1c1c1c; color: #f0ead8; font-weight: 700; text-align: center; pointer-events: none; white-space: nowrap; }
+  .wv-live-actions { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 62; display: flex; gap: 8px; }
   ol.steps li { margin-bottom: 8px; background: #26262e; border-left: 4px solid #d4af37; border-radius: 6px; padding: 10px 10px 10px 12px; list-style-position: inside; }
 </style>
 <link rel="stylesheet" href="diagram-upgrades.css">
@@ -48,7 +61,7 @@
   <h2>1. Show the machine</h2>
   <img id="preview" class="preview" hidden alt="Captured machine photo">
   <div class="row">
-    <button id="cameraBtn">📷 Open camera</button>
+    <button id="cameraBtn">Open camera</button>
   </div>
   <p class="hint">Opens your camera — take the photo, and it attaches here.</p>
   <input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
@@ -59,7 +72,7 @@
   <h2>2. Describe the job</h2>
   <textarea id="task" rows="3" placeholder="Example: generator won't stay running, or pump pressure is low"></textarea>
   <div class="row">
-    <button id="micBtn" class="secondary">🎤 Speak it</button>
+    <button id="micBtn" class="secondary">Speak it</button>
   </div>
   <p id="micHint" class="hint"></p>
 </div>
@@ -83,12 +96,12 @@
   <h3 id="troubleshootHeading" hidden>Troubleshooting</h3>
   <ol class="steps" id="troubleshoot" hidden></ol>
   <div class="row speak-bar">
-    <button id="speakBtn">🔊 Spoken walkthrough</button>
+    <button id="speakBtn">Spoken walkthrough</button>
     <button id="stopSpeakBtn" class="secondary">Stop</button>
   </div>
   <div class="row">
-    <button id="partsBtn">🔩 Parts list</button>
-    <button id="newJobBtn" class="secondary">🆕 New job</button>
+    <button id="partsBtn">Parts list</button>
+    <button id="newJobBtn" class="secondary">New job</button>
   </div>
   <h3>Follow-up</h3>
   <textarea id="followup" rows="2" placeholder="Add a symptom, correct a step, or confirm a part — the manual updates on this same job"></textarea>
@@ -103,13 +116,13 @@
   <p><strong>Machine:</strong> <span id="partsMachine">—</span></p>
   <ol class="steps" id="partsList"></ol>
   <div class="row">
-    <button id="manualBtn" hidden>📖 Factory owner's manual</button>
-    <button id="backBtn" class="secondary">← Back to manual</button>
+    <button id="manualBtn" hidden>Factory owner's manual</button>
+    <button id="backBtn" class="secondary">Back to manual</button>
   </div>
 </div>
 
 <script src="app.js"></script>
 <script src="diagram-upgrades.js"></script>
-<p class="hint version">WrenchVision v17</p>
+<p class="hint version">WrenchVision v18</p>
 </body>
 </html>

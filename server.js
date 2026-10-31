@@ -67,7 +67,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v18";
+const VERSION = "v19";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint

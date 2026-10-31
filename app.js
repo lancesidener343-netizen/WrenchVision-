@@ -46,6 +46,14 @@ let currentManualUrl = null;
 // they are stored or sent. Full-resolution phone photos blew past the
 // phone's memory at capture time and made the upload huge; the model
 // only needs a readable photo.
+// v19: the file-picker path no longer runs the photo through a
+// FileReader base64 string plus a full-resolution Image decode — that
+// pair spiked memory exactly at the camera→browser handoff and drew
+// the phone's low-memory banner on photo confirm. It now decodes via
+// createImageBitmap straight to a downscaled canvas and releases the
+// bitmap at once; the stored/sent value is still the same downscaled
+// JPEG data URL, so the server contract is unchanged. The old path
+// stays as the fallback where createImageBitmap is missing.
 const MAX_PHOTO_EDGE = 1280;
 function downscaleDataUrl(dataUrl, done) {
   const img = new Image();
@@ -86,12 +94,49 @@ function attachPhotoDataUrl(dataUrl, name) {
   });
 }
 
+// File-picker attach: decode once, downscaled, no full-file base64
+// string in memory. Falls back to the FileReader path on any failure.
+function attachPhotoFile(file) {
+  fileNameEl.textContent = file.name;
+  photoPending = true;
+  const finish = (small) => {
+    photoDataUrl = small;
+    photoPending = false;
+    preview.src = small;
+    preview.hidden = false;
+  };
+  const fallback = () => {
+    const reader = new FileReader();
+    reader.onload = () => attachPhotoDataUrl(reader.result, file.name);
+    reader.readAsDataURL(file);
+  };
+  if (window.createImageBitmap) {
+    window
+      .createImageBitmap(file)
+      .then((bmp) => {
+        const scale = Math.min(
+          1,
+          MAX_PHOTO_EDGE / Math.max(bmp.width, bmp.height)
+        );
+        const w = Math.round(bmp.width * scale);
+        const h = Math.round(bmp.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+        if (bmp.close) bmp.close();
+        finish(canvas.toDataURL("image/jpeg", 0.8));
+      })
+      .catch(fallback);
+    return;
+  }
+  fallback();
+}
+
 fileInput.addEventListener("change", () => {
   const file = fileInput.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => attachPhotoDataUrl(reader.result, file.name);
-  reader.readAsDataURL(file);
+  attachPhotoFile(file);
 });
 
 // --- Live camera with the eye viewfinder (secure contexts only) ---

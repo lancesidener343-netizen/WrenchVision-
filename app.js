@@ -172,12 +172,30 @@ async function openLiveView() {
   video.playsInline = true;
   video.muted = true;
   overlay.appendChild(video);
-  const eye = document.createElement("div");
-  eye.className = "wv-eye";
+  // v20: the eye is a full border around the view — an SVG eye path
+  // (pointed corners, gold stroke) with the camera seen through the
+  // center. Replaces the thin ellipse + iris ring: the frame IS the
+  // eye, and the middle stays clear so the machine can be framed.
+  const eyeNS = "http://www.w3.org/2000/svg";
+  const eye = document.createElementNS(eyeNS, "svg");
+  eye.setAttribute("class", "wv-eye");
+  eye.setAttribute("viewBox", "0 0 100 60");
+  eye.setAttribute("aria-hidden", "true");
+  const eyePath = document.createElementNS(eyeNS, "path");
+  eyePath.setAttribute("d", "M2,30 Q50,2 98,30 Q50,58 2,30 Z");
+  eyePath.setAttribute("fill", "none");
+  eyePath.setAttribute("stroke", "#d4af37");
+  eyePath.setAttribute("stroke-width", "1.6");
+  eye.appendChild(eyePath);
+  for (const cx of [2, 98]) {
+    const dot = document.createElementNS(eyeNS, "circle");
+    dot.setAttribute("cx", String(cx));
+    dot.setAttribute("cy", "30");
+    dot.setAttribute("r", "1.6");
+    dot.setAttribute("fill", "#d4af37");
+    eye.appendChild(dot);
+  }
   overlay.appendChild(eye);
-  const iris = document.createElement("div");
-  iris.className = "wv-eye-iris";
-  overlay.appendChild(iris);
   const cap = document.createElement("div");
   cap.className = "wv-live-cap";
   cap.textContent = "Look into the eye — frame the machine";

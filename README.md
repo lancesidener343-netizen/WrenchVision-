@@ -39,9 +39,9 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
 - Follow-up updates: type extra symptoms, corrections, or
   confirmations and the manual updates on the same job.
 - A schematic diagram in the diagram area, drawn from the factory
-  component set and labeled illustrative, plus links to the factory
-  owner's manual and Honda's free parts catalog for the true exploded
-  diagrams (EU7000is only, so far).
+  component set and labeled illustrative, plus a link to the factory
+  owner's manual whenever one is verified for the machine, and Honda's
+  free parts catalog for the true exploded diagrams (EU7000is only).
 - A photo-anchored diagram (v12): after Generate, sam-3.1 locates
   each callout part in the user's actual photo, and the diagram area
   shows that photo with numbered gold markers on the located parts.
@@ -75,6 +75,16 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   createImageBitmap straight to a ≤1280px canvas and releases the
   bitmap at once, instead of holding the full file in memory at the
   camera→browser handoff.
+- Factory-manual search (v22): after the app identifies the
+  machine, it looks for that exact model's factory owner's manual
+  from an official source, reads it, and grounds the steps in it —
+  specs the book covers are labeled verified, everything else stays
+  inferred, and the app links the official book (link only, never
+  copied). A book is only used when its fetched text names the
+  identified model and reads as a manual; anything else falls back
+  to today's behavior (all inferred, no link), so a failed search
+  never breaks the manual. The Honda EU7000is keeps its built-in
+  reference.
 
 ## Demo machines
 
@@ -122,7 +132,7 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: one Open camera button
   (the phone's camera, via the file picker), photo preview, job
   description input with voice input, and the results area. The page footer shows the app version
-  (v21), so a phone screenshot settles which build is running. On
+  (v22), so a phone screenshot settles which build is running. On
   load, the page restores the job saved during this server run
   (GET /api/job), so leaving the app and coming back mid-job shows
   the manual instead of an empty form; starting the server is a
@@ -146,7 +156,8 @@ key is not configured instead of showing a manual.
   empty model output, and errors render as errors, not steps.
   v12–v13 add SAM photo diagrams; v16–v17 add the diagram upgrades
   (labels, leader lines, zoom, mask outlines); v21 serves the
-  live-camera frame image.
+  live-camera frame image; v22 adds factory-manual search +
+  grounding (verified book or fallback to inferred).
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

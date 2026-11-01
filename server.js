@@ -62,12 +62,25 @@
 // has no photo in memory, so it also renders the schematic —
 // the same as the photo preview today.
 
+// v22: factory-manual search + grounding for any machine. After
+// the app identifies the machine, it looks for that exact model's
+// factory owner's manual from an official source, reads it, and
+// grounds the steps in it: specs the book covers are labeled
+// verified, everything else stays inferred, and the app links the
+// official book (link only, never copied). A book is only used
+// when its fetched text names the identified model and reads as
+// a manual — anything else falls back exactly to today's
+// behavior (all inferred, no link), so a failed search never
+// breaks the manual. The Honda EU7000is keeps its built-in
+// reference below, unchanged.
+
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v21";
+const VERSION = "v22";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -106,6 +119,309 @@ const EU7000IS_REFERENCE = [
 const EU7000IS_MANUAL_URL =
   "https://productguidebook.com/files/manuals/hondapower-eu7000is-owners-manual_Ryh6mI3.pdf";
 const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
+
+// v22 search tuning. No search API key exists, so candidates come
+// from the model (official manual URLs for the identified model)
+// and every candidate is verified by actually fetching it — a
+// candidate that fails to fetch, does not name the model, or does
+// not read as a manual is dropped, never presented. Fetches are
+// capped in time and size; the reference handed to Generate is
+// slices only, never the whole book.
+const MANUAL_SEARCH_TIMEOUT_MS = 15000;
+const MANUAL_SEARCH_MAX_CANDIDATES = 3;
+const MANUAL_FETCH_MAX_BYTES = 4 * 1024 * 1024;
+const MANUAL_REFERENCE_MAX_CHARS = 3000;
+const MANUAL_MARKER_RE =
+  /owner'?s manual|user manual|operator'?s manual|instruction manual|user'?s guide|operating instructions/i;
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeMachine(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+// Exact-model match with a variant guard: the model token must
+// appear bounded by non-model characters, so a GBD-200SM manual
+// does not pass for a GBD-200, and an XGBD-200 does not either.
+function modelTokenMatches(text, model) {
+  const token = String(model || "").trim();
+  if (!token) return false;
+  try {
+    return new RegExp(
+      `(?<![A-Za-z0-9-])${escapeRegExp(token)}(?![A-Za-z0-9-])`,
+      "i"
+    ).test(String(text || ""));
+  } catch {
+    return false;
+  }
+}
+
+// Same-machine check for the search link: either machine name
+// contains the other (normalized), or the generated manual names
+// the identified model token.
+function machineMatches(generatedMachine, identified) {
+  const gen = normalizeMachine(generatedMachine);
+  const id = normalizeMachine(identified.machine || "");
+  if (!gen || !id) return false;
+  if (gen.includes(id) || id.includes(gen)) return true;
+  const model = String(identified.model || "").trim();
+  return Boolean(model) && modelTokenMatches(generatedMachine, model);
+}
+
+function looksLikeManual(text) {
+  return MANUAL_MARKER_RE.test(String(text || ""));
+}
+
+// Fetch with a byte cap: oversized bodies are truncated, not
+// rejected — early pages usually carry the title and specs, and
+// a truncated body that fails verification is dropped anyway.
+async function fetchWithCap(url) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "WrenchVision/22 (factory manual lookup)",
+    },
+    signal: AbortSignal.timeout(MANUAL_SEARCH_TIMEOUT_MS),
+  });
+  if (!res.ok || !res.body) return null;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+    if (total >= MANUAL_FETCH_MAX_BYTES) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Reader already closed — the partial body still stands.
+      }
+      break;
+    }
+  }
+  let size = 0;
+  for (const c of chunks) size += c.length;
+  const buf = Buffer.alloc(size);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.length;
+  }
+  return { contentType: res.headers.get("content-type") || "", buf };
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Dependency-free PDF text extraction: inflate FlateDecode
+// streams found by direct /Length and pull Tj/TJ strings. It
+// works for plain unencrypted PDFs and yields nothing for
+// encrypted or image-only ones — which is the safe direction,
+// because an unreadable candidate is rejected, never guessed.
+function extractPdfText(buf) {
+  const chunks = [];
+  const s = buf.toString("latin1");
+  const re = /(\d+)\s+(\d+)\s+obj([\s\S]*?)stream\r?\n/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const lenM = m[3].match(/\/Length\s+(\d+)/);
+    if (!lenM) continue;
+    const len = parseInt(lenM[1], 10);
+    const start = m.index + m[0].length;
+    const data = buf.subarray(start, start + len);
+    let out;
+    try {
+      out = zlib.inflateSync(data);
+    } catch {
+      continue;
+    }
+    const t = out.toString("latin1");
+    const tjRe = /\((?:\\.|[^\\)])*\)\s*Tj/g;
+    let tm;
+    while ((tm = tjRe.exec(t)) !== null) {
+      chunks.push(tm[0].replace(/\s*Tj$/, "").slice(1, -1));
+    }
+    const tjArrRe = /\[(?:[^\]])*\]\s*TJ/g;
+    while ((tm = tjArrRe.exec(t)) !== null) {
+      const parts = [];
+      const strRe = /\((?:\\.|[^\\)])*\)/g;
+      let sm;
+      while ((sm = strRe.exec(tm[0])) !== null) {
+        parts.push(sm[0].slice(1, -1));
+      }
+      if (parts.length) chunks.push(parts.join(""));
+    }
+  }
+  return chunks.join(" ");
+}
+
+function extractManualText(contentType, buf) {
+  if (buf.subarray(0, 5).toString("latin1") === "%PDF-") {
+    return extractPdfText(buf);
+  }
+  const text = buf.toString("utf8");
+  if (/^\s*(<!DOCTYPE|<html)/i.test(text)) return stripHtml(text);
+  if ((contentType || "").includes("html")) return stripHtml(text);
+  return "";
+}
+
+// Slices only: score text lines by job keywords and spec
+// patterns (numbers with units), keep the best in document
+// order, capped. An empty result means the book does not cover
+// this job — the link may still stand, but no reference is
+// passed, so steps stay inferred.
+function selectReferenceSlices(text, jobText, maxChars) {
+  const words =
+    String(jobText || "")
+      .toLowerCase()
+      .match(/[a-z0-9][a-z0-9-]{3,}/g) || [];
+  const stop = new Set([
+    "that", "with", "this", "from", "will", "what", "when",
+    "your", "have", "been", "they", "them", "then", "than",
+    "into", "over", "under", "about", "after", "before",
+  ]);
+  const keys = [...new Set(words.filter((w) => !stop.has(w)))].slice(0, 40);
+  const specRe =
+    /\d[\d,.]*\s*(gal|qt|mm|cm|in|lbf|psi|hp|cc|rpm|ah|volts?|amps?|watts?|oz|lb|kg|hz)\b/i;
+  let lines = String(text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 5) {
+    lines = (String(text || "").match(/[^.!?]+[.!?]+/g) || [String(text || "")])
+      .map((l) => l.trim())
+      .filter(Boolean);
+  }
+  const scored = [];
+  for (let i = 0; i < lines.length; i++) {
+    const low = lines[i].toLowerCase();
+    let score = 0;
+    for (const k of keys) if (low.includes(k)) score += 1;
+    if (specRe.test(lines[i])) score += 2;
+    if (score > 0) scored.push({ i, line: lines[i], score });
+  }
+  scored.sort((a, b) => b.score - a.score || a.i - b.i);
+  const picked = new Set();
+  let total = 0;
+  for (const s of scored) {
+    if (total + s.line.length + 1 > maxChars) continue;
+    picked.add(s.i);
+    total += s.line.length + 1;
+  }
+  return lines.filter((_, i) => picked.has(i)).join(" ");
+}
+
+// Verify one candidate by fetching it: HTTP 200, readable
+// text, the exact model token, and manual markers. Anything
+// less returns null — never a presented-but-unverified book.
+async function verifyManualCandidate(url, model) {
+  let fetched;
+  try {
+    fetched = await fetchWithCap(url);
+  } catch {
+    return null;
+  }
+  if (!fetched) return null;
+  const text = extractManualText(fetched.contentType, fetched.buf);
+  if (!text || text.length < 100) return null;
+  if (!modelTokenMatches(text, model)) return null;
+  if (!looksLikeManual(text)) return null;
+  return { url, text };
+}
+
+// One model call: identify the machine from the photo (or the
+// job text) and ask for official factory manual URLs for that
+// exact model. The URLs are suggestions only — the server
+// verifies each by fetching before anything is used.
+async function identifyMachine(apiKey, photo, task) {
+  const content = [
+    {
+      type: "text",
+      text:
+        "Identify the machine in the photo, if one was provided. " +
+        (task ? `The user reports: ${task}. ` : "") +
+        "Return JSON only, no other text: {\"machine\": \"full machine name\", " +
+        "\"model\": \"exact model code or name as marked on the machine, or empty\", " +
+        "\"manualCandidates\": [\"up to 3 official factory owner's manual URLs for this exact model, " +
+        "manufacturer site only, or empty\"]}.",
+    },
+  ];
+  if (photo) {
+    content.push({ type: "image_url", image_url: { url: photo } });
+  }
+  const raw = await callModel(apiKey, [{ role: "user", content }], 8000);
+  try {
+    const jsonText = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const parsed = JSON.parse(jsonText);
+    if (!parsed || typeof parsed !== "object") return null;
+    const cands = (Array.isArray(parsed.manualCandidates)
+      ? parsed.manualCandidates
+      : []
+    )
+      .filter((u) => typeof u === "string" && /^https?:\/\//i.test(u))
+      .slice(0, MANUAL_SEARCH_MAX_CANDIDATES);
+    return {
+      machine: String(parsed.machine || ""),
+      model: String(parsed.model || ""),
+      candidates: [...new Set(cands)],
+    };
+  } catch {
+    return null;
+  }
+}
+
+// The v22 search step. Returns {machine, model, url, reference}
+// for a verified factory book, else null. Never throws: any
+// failure means "no book" and the caller runs today's flow.
+// The Honda EU7000is short-circuits to null because its
+// built-in reference already covers it — the proven path is
+// not re-searched.
+async function searchFactoryManual(apiKey, photo, task) {
+  let id;
+  try {
+    id = await identifyMachine(apiKey, photo, task);
+  } catch {
+    return null;
+  }
+  if (!id || !id.machine) return null;
+  if (/eu7000is/i.test(`${id.machine} ${id.model}`)) return null;
+  const model = (id.model || "").trim() || id.machine;
+  for (const url of id.candidates) {
+    let found = null;
+    try {
+      found = await verifyManualCandidate(url, model);
+    } catch {
+      found = null;
+    }
+    if (!found) continue;
+    const reference = selectReferenceSlices(
+      found.text,
+      task,
+      MANUAL_REFERENCE_MAX_CHARS
+    );
+    return { machine: id.machine, model: id.model, url: found.url, reference };
+  }
+  return null;
+}
 
 // The current job: the machine, the original job text, and the
 // latest manual (including parts, troubleshooting, and the problem section). POST
@@ -254,6 +570,32 @@ async function handleGenerate(req, res) {
     return;
   }
 
+  // v22: factory-manual search, best effort only. Any failure
+  // leaves the flow exactly as before (all inferred, no link).
+  let foundManual = null;
+  try {
+    foundManual = await searchFactoryManual(apiKey, input.photo, input.task || "");
+  } catch {
+    foundManual = null;
+  }
+  const searchReferenceBlock =
+    foundManual && foundManual.reference
+      ? "The machine was identified as " +
+        foundManual.machine +
+        (foundManual.model ? " (" + foundManual.model + ")" : "") +
+        ". The factory reference below covers only this machine and " +
+        "is the truth: ground every fact you can in it and say " +
+        "nothing that contradicts it. Build the steps from the " +
+        "reference wherever it covers the job — its specs, " +
+        "intervals, and procedures — and label those steps " +
+        "verified. Where the reference does not cover a step, " +
+        "write it from the job and label it inferred, never as " +
+        "book text.\nFactory reference (" +
+        foundManual.machine +
+        ", verified factory owner's manual):\n" +
+        foundManual.reference
+      : "";
+
   const userText = [
     "Identify the machine in the photo, if one was provided.",
     input.task ? `The user reports: ${input.task}` : "",
@@ -266,6 +608,7 @@ async function handleGenerate(req, res) {
       "label it inferred, never as book text. For any other " +
       "machine, ignore the reference entirely.\n" +
       EU7000IS_REFERENCE,
+    ...(searchReferenceBlock ? [searchReferenceBlock] : []),
     "Return a repair manual as JSON with keys: machine (string), " +
       "problem (object with symptom — the reported problem in one " +
       "line — and diagnosis — the most likely cause in one or two " +
@@ -324,6 +667,20 @@ async function handleGenerate(req, res) {
     return;
   }
 
+  // v22: the manual link comes only from the server-verified
+  // search result — never from model output (tryParseManual
+  // strips any non-Honda manualUrl the model offers). If the
+  // manual names a different machine than the search verified,
+  // the link is dropped rather than shown for the wrong machine.
+  // A verified book with no job-relevant slices still links (the
+  // user gets the real book) but passes no reference, so steps
+  // stay inferred.
+  const searchGrounded =
+    Boolean(foundManual) && machineMatches(manual.machine, foundManual);
+  if (foundManual) {
+    manual.manualUrl = searchGrounded ? foundManual.url : "";
+  }
+
   // v12: photo-anchored diagram. Best effort only — a failure
   // here must not touch the manual that is already built.
   if (input.photo && Array.isArray(manual.callouts) && manual.callouts.length) {
@@ -339,7 +696,14 @@ async function handleGenerate(req, res) {
     }
   }
 
-  currentJob = { machine: manual.machine, task: input.task || "", manual };
+  currentJob = {
+    machine: manual.machine,
+    task: input.task || "",
+    manual,
+    ...(searchGrounded
+      ? { manualReference: foundManual.reference, manualUrl: foundManual.url }
+      : {}),
+  };
   saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
@@ -467,6 +831,14 @@ async function handleFollowup(req, res) {
     return;
   }
 
+  // v22: carry the verified search reference forward, if this
+  // job has one. It stays scoped to the machine it was verified
+  // for — if the manual's machine changes, the link and the
+  // reference are dropped rather than carried to a new machine.
+  const prevMachine = currentJob.machine || "";
+  const prevReference = currentJob.manualReference || "";
+  const prevManualUrl = currentJob.manualUrl || "";
+
   const followupText = [
     "Update this repair manual with the new information below. " +
       "Keep the same machine unless the new information says " +
@@ -483,6 +855,18 @@ async function handleFollowup(req, res) {
       "text. For any other machine, ignore the reference " +
       "entirely.\n" +
       EU7000IS_REFERENCE,
+    ...(prevReference
+      ? ["The factory reference below covers only " +
+        prevMachine +
+        " and is the truth for that machine: ground every fact " +
+        "you can in it and label those steps verified; where it " +
+        "does not cover a step, label it inferred, never as book " +
+        "text. If the machine changes, do not use this reference " +
+        "for the new machine.\nFactory reference (" +
+        prevMachine +
+        "):\n" +
+        prevReference]
+      : []),
     currentJob.task ? `Original job: ${currentJob.task}` : "",
     "Current manual: " + JSON.stringify(currentJob.manual),
     "New information: " + text,
@@ -539,6 +923,25 @@ async function handleFollowup(req, res) {
     return;
   }
 
+  // v22: re-assert the verified manual link only when the
+  // manual is still about the machine it was verified for.
+  // Honda jobs have no stored search link, so this never
+  // touches the built-in Honda path.
+  let nextReference = "";
+  let nextManualUrl = "";
+  if (prevManualUrl) {
+    if (
+      manual.machine &&
+      machineMatches(manual.machine, { machine: prevMachine, model: "" })
+    ) {
+      manual.manualUrl = prevManualUrl;
+      nextReference = prevReference;
+      nextManualUrl = prevManualUrl;
+    } else {
+      manual.manualUrl = "";
+    }
+  }
+
   if (
     oldRegions &&
     oldRegions.length > 0 &&
@@ -552,7 +955,14 @@ async function handleFollowup(req, res) {
     manual.photoHeight = oldPhotoHeight;
   }
 
-  currentJob = { machine: manual.machine, task: currentJob.task, manual };
+  currentJob = {
+    machine: manual.machine,
+    task: currentJob.task,
+    manual,
+    ...(nextManualUrl
+      ? { manualReference: nextReference, manualUrl: nextManualUrl }
+      : {}),
+  };
   saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
@@ -1008,3 +1418,19 @@ server.listen(PORT, () => {
     console.log("META_API_KEY is not set — /api/generate will report that.");
   }
 });
+
+// Test surface (no effect when run as the server): pure helpers
+// exported so tests can require this file with a stubbed fetch.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    modelTokenMatches,
+    machineMatches,
+    looksLikeManual,
+    extractManualText,
+    extractPdfText,
+    selectReferenceSlices,
+    verifyManualCandidate,
+    identifyMachine,
+    searchFactoryManual,
+  };
+}

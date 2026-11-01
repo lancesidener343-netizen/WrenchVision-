@@ -107,6 +107,19 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   load, and clears on New Job. The follow-up response states
   which steps it newly marked done, so a mis-marking is visible
   and tappable to correct.
+- Cosmetics (v25): the WrenchVision eye mark sits as a fixed,
+  centered page background (faded to 0.16 opacity) that stays put
+  while the cards scroll over it; cards are translucent so the
+  logo shows through them as they move, while the machine photo,
+  diagram area, buttons, and inputs stay fully opaque and text
+  stays readable. The camera caption under the photo ("Photo of
+  your machine — gold markers…") is removed, the broken
+  voice-input ("Speak it") button is removed (the spoken
+  walkthrough is untouched), and the photo section gains a
+  clearly labeled "Upload a photo" button — the same file-picker
+  attach path as the camera button, but without the camera
+  capture hint, so the chooser offers existing photos when a
+  picture can't be taken.
 
 ## Demo machines
 
@@ -182,7 +195,10 @@ key is not configured instead of showing a manual.
   grounding (verified book or fallback to inferred); v23 adds
   badge-integrity enforcement (verified labels require a verified
   factory reference, else they become inferred); v24 adds
-  step-completion (done) markers, separate from badges.
+  step-completion (done) markers, separate from badges; v25 adds
+  the fixed centered logo background + translucent cards, removes
+  the camera caption and the Speak-it button, and adds the
+  Upload-a-photo button.
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

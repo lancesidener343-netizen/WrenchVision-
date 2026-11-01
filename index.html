@@ -55,6 +55,17 @@
   .wv-live-cap { position: fixed; left: 50%; top: calc(42% + 47vw + 14px); transform: translateX(-50%); z-index: 61; padding: 6px 14px; border: 1px solid #d4af37; border-radius: 999px; background: #1c1c1c; color: #f0ead8; font-weight: 700; text-align: center; pointer-events: none; white-space: nowrap; }
   .wv-live-actions { position: fixed; left: 16px; right: 16px; bottom: 24px; z-index: 62; display: flex; gap: 8px; }
   ol.steps li { margin-bottom: 8px; background: #26262e; border-left: 4px solid #d4af37; border-radius: 6px; padding: 10px 10px 10px 12px; list-style-position: inside; }
+  /* v25: fixed centered logo background + translucent cards.
+     The eye art stays centered on the viewport while cards scroll
+     over it; it is reused from the header image via --wv-bg-image
+     (set in app.js), so no second copy of the artwork ships in the
+     repo. z-index -1 keeps it above the page gradient but below
+     every card, and pointer-events none keeps it untappable. */
+  body::before { content: ""; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(60vw, 420px); height: min(60vw, 420px); background-image: var(--wv-bg-image, none); background-size: contain; background-repeat: no-repeat; background-position: center; opacity: 0.16; pointer-events: none; z-index: -1; }
+  .card { background: rgba(30, 30, 36, 0.70); }
+  .speak-bar { background: rgba(38, 38, 46, 0.70); }
+  ol.steps li { background: transparent; }
+  .diagram { background: #1e1e24; }
 </style>
 <link rel="stylesheet" href="diagram-upgrades.css">
 </head>
@@ -70,17 +81,17 @@
     <button id="cameraBtn">Open camera</button>
   </div>
   <p class="hint">Opens your camera — take the photo, and it attaches here.</p>
+  <div class="row">
+    <button id="uploadBtn" class="secondary">Upload a photo</button>
+  </div>
   <input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
+  <input type="file" id="uploadInput" accept="image/*" hidden>
   <p class="hint" id="fileName"></p>
 </div>
 
 <div class="card">
   <h2>2. Describe the job</h2>
   <textarea id="task" rows="3" placeholder="Example: generator won't stay running, or pump pressure is low"></textarea>
-  <div class="row">
-    <button id="micBtn" class="secondary">Speak it</button>
-  </div>
-  <p id="micHint" class="hint"></p>
 </div>
 
 <div class="card">
@@ -129,6 +140,6 @@
 
 <script src="app.js"></script>
 <script src="diagram-upgrades.js"></script>
-<p class="hint version">WrenchVision v24</p>
+<p class="hint version">WrenchVision v25</p>
 </body>
 </html>

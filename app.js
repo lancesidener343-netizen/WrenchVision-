@@ -7,10 +7,10 @@ const $ = (id) => document.getElementById(id);
 const preview = $("preview");
 const cameraBtn = $("cameraBtn");
 const fileInput = $("fileInput");
+const uploadBtn = $("uploadBtn");
+const uploadInput = $("uploadInput");
 const fileNameEl = $("fileName");
 const taskInput = $("task");
-const micBtn = $("micBtn");
-const micHint = $("micHint");
 const generateBtn = $("generate");
 const statusEl = $("status");
 const resultsEl = $("results");
@@ -81,6 +81,25 @@ function downscaleDataUrl(dataUrl, done) {
 // never worked on the plain Wi-Fi page, so they are gone — one
 // camera button, and it works as Open camera.
 cameraBtn.addEventListener("click", () => fileInput.click());
+
+// v25: fixed centered logo background reuses the embedded header eye
+// art (no second copy of the artwork in the repo): the CSS
+// body::before layer reads it from this variable.
+const headerEye = document.querySelector(".header-eye");
+if (headerEye && headerEye.src) {
+  document.documentElement.style.setProperty("--wv-bg-image", `url("${headerEye.src}")`);
+}
+
+// v25: standing upload fallback — same file-picker attach path as the
+// camera button, but through an input WITHOUT capture, so the chooser
+// offers existing photos (gallery/files) instead of opening the camera
+// again when a picture can't be taken.
+uploadBtn.addEventListener("click", () => uploadInput.click());
+uploadInput.addEventListener("change", () => {
+  const file = uploadInput.files[0];
+  if (!file) return;
+  attachPhotoFile(file);
+});
 
 // One attach path for both photo sources: the file picker and the
 // live viewfinder below feed it the same way.
@@ -238,22 +257,8 @@ if (liveCameraOK) {
   cameraBtn.parentNode.appendChild(liveBtn);
 }
 
-// --- Voice input (browser speech recognition when available) ---
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SpeechRecognition) {
-  const recognition = new SpeechRecognition();
-  recognition.onresult = (event) => {
-    taskInput.value = event.results[0][0].transcript;
-  };
-  recognition.onerror = () => {
-    micHint.textContent = "Could not hear that — type the job instead.";
-  };
-  micBtn.addEventListener("click", () => recognition.start());
-} else {
-  micBtn.disabled = true;
-  micHint.textContent = "Voice input is not supported in this browser — type the job instead.";
-}
+// v25: voice-input ("Speak it") button removed at Lance's word — it
+// didn't work. The spoken walkthrough below is separate and stays.
 
 // --- Generate ---
 generateBtn.addEventListener("click", async () => {
@@ -360,8 +365,8 @@ function renderManual(data) {
   // reload has no photo in memory, so it renders the schematic
   // instead — the same as the photo preview today. Markers are
   // detected regions for a callout concept, never verified part
-  // positions, and the caption says so; parts with no marker
-  // were not located in this photo, not missing from the job.
+  // positions; parts with no marker were not located in this photo,
+  // not missing from the job.
   const regions = Array.isArray(data.photoRegions) ? data.photoRegions : [];
   if (
     regions.length &&
@@ -401,11 +406,6 @@ function renderManual(data) {
       wrap.appendChild(box);
     });
     diagramBox.appendChild(wrap);
-    const cap = document.createElement("p");
-    cap.className = "hint";
-    cap.textContent =
-      "Photo of your machine — gold markers show where the model located each part; parts without a marker weren't located in this photo.";
-    diagramBox.appendChild(cap);
   } else if (data.diagramSvg) {
     // Server-sanitized SVG only; nothing else is injected as HTML.
     diagramBox.innerHTML = data.diagramSvg;
@@ -580,6 +580,7 @@ newJobBtn.addEventListener("click", async () => {
   photoDataUrl = null;
   photoPending = false;
   fileInput.value = "";
+  uploadInput.value = "";
   fileNameEl.textContent = "";
   preview.src = "";
   preview.hidden = true;

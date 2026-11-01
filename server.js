@@ -80,7 +80,7 @@ const path = require("path");
 const zlib = require("zlib");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v23";
+const VERSION = "v24";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -209,6 +209,37 @@ function enforceBadgeIntegrity(manual, hasVerifiedReference) {
     }
   }
   return manual;
+}
+
+// v24: step completion, kept strictly separate from badge
+// honesty. "verified" means a factory book backs the step;
+// "done" means Lance said he did it (or tapped it). Done state
+// lives as a set of 1-based step numbers on the job, never as a
+// label change: marking steps done never touches a badge, and
+// enforceBadgeIntegrity above never touches done state. A
+// follow-up's completedSteps ADD to the set (progress is sticky
+// across follow-ups); tap-to-toggle removes or adds single
+// steps; New Job clears the set. Numbers are clamped to the
+// current manual's step count, so a rewritten manual can never
+// carry a done mark for a step that does not exist. Returns
+// { doneSteps (full set, sorted), markedDone (newly added by
+// this follow-up, sorted) }.
+function computeDoneSteps(prevDoneSteps, completedSteps, stepCount) {
+  const clean = (arr) => {
+    const out = new Set();
+    for (const n of Array.isArray(arr) ? arr : []) {
+      if (Number.isInteger(n) && n >= 1 && n <= stepCount) out.add(n);
+    }
+    return out;
+  };
+  const prev = clean(prevDoneSteps);
+  const completed = clean(completedSteps);
+  const done = new Set([...prev, ...completed]);
+  const doneSteps = [...done].sort((a, b) => a - b);
+  const markedDone = [...completed]
+    .filter((n) => !prev.has(n))
+    .sort((a, b) => a - b);
+  return { doneSteps, markedDone };
 }
 
 // Fetch with a byte cap: oversized bodies are truncated, not
@@ -525,9 +556,50 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(
         currentJob
-          ? { task: currentJob.task || "", manual: currentJob.manual }
-          : { task: "", manual: null }
+          ? { task: currentJob.task || "", manual: currentJob.manual, doneSteps: currentJob.doneSteps || [] }
+          : { task: "", manual: null, doneSteps: [] }
       ));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/stepdone") {
+      // v24: tap-to-toggle for a single step's done state.
+      // Body: { step (1-based number), done (boolean) }. Done
+      // state lives on the job, never on a badge: toggling
+      // cannot change any label. Persists via saveJob, so a
+      // page reload restores it; New Job clears it.
+      let body;
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid request." }));
+        return;
+      }
+      const step = body.step;
+      const done = body.done === true;
+      if (
+        !currentJob ||
+        !currentJob.manual ||
+        !Array.isArray(currentJob.manual.steps) ||
+        !Number.isInteger(step) ||
+        step < 1 ||
+        step > currentJob.manual.steps.length
+      ) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "No such step in the current job." }));
+        return;
+      }
+      const set = new Set(
+        (currentJob.doneSteps || []).filter(
+          (n) => Number.isInteger(n) && n >= 1 && n <= currentJob.manual.steps.length
+        )
+      );
+      if (done) set.add(step);
+      else set.delete(step);
+      currentJob.doneSteps = [...set].sort((a, b) => a - b);
+      saveJob();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, doneSteps: currentJob.doneSteps }));
       return;
     }
     if (req.method === "POST" && req.url === "/api/newjob") {
@@ -741,10 +813,15 @@ async function handleGenerate(req, res) {
     }
   }
 
+  // v24: a fresh manual starts with no steps done. Completion
+  // is job state, not manual content, so any completedSteps the
+  // model reported is dropped here rather than saved.
+  delete manual.completedSteps;
   currentJob = {
     machine: manual.machine,
     task: input.task || "",
     manual,
+    doneSteps: [],
     ...(searchGrounded
       ? { manualReference: foundManual.reference, manualUrl: foundManual.url }
       : {}),
@@ -752,7 +829,7 @@ async function handleGenerate(req, res) {
   saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(manual));
+  res.end(JSON.stringify({ ...manual, doneSteps: [], markedDone: [] }));
 }
 
 // Generate-Scan-Fix loop, shared by /api/generate and /api/followup.
@@ -832,6 +909,10 @@ async function runManualLoop(apiKey, messages) {
       if (!fixedManual.problem || (!fixedManual.problem.symptom && !fixedManual.problem.diagnosis)) {
         fixedManual.problem = manual.problem || { symptom: "", diagnosis: "" };
       }
+      // A fix must not silently drop completion info: Fix is
+      // about safety flags, not about which steps are done, so
+      // the draft's completedSteps carry through untouched.
+      fixedManual.completedSteps = manual.completedSteps || [];
       manual = fixedManual;
     }
     // If Fix fails, the scanned draft still goes out with its labels.
@@ -890,9 +971,10 @@ async function handleFollowup(req, res) {
       "otherwise. Keep steps and parts that are still correct, " +
       "change the ones the new information affects, and add anything " +
       "new it calls for. Label every step and part honestly as " +
-      "verified, inferred, or illustrative — a fact the user " +
-      "confirms becomes verified, anything else stays inferred or " +
-      "illustrative.",
+      "verified, inferred, or illustrative — verified ONLY for " +
+      "facts the factory reference covers; a fact the user " +
+      "confirms does NOT become verified (completion is tracked " +
+      "separately via completedSteps below, never via labels).",
     "If the machine is a Honda EU7000is, the factory reference is " +
       "the truth: ground every fact and every step you can in it, " +
       "and label steps the reference covers as verified; where it " +
@@ -928,7 +1010,12 @@ async function handleFollowup(req, res) {
       "verified, inferred, illustrative), troubleshooting (array of " +
       "objects with symptom, cause, check, and label — update it " +
       "with the new information just like the steps), manualUrl, " +
-      "partsUrl.",
+      "partsUrl, completedSteps (array of 1-based step numbers " +
+      "IN THE UPDATED MANUAL that the new information says are " +
+      "completed — if it says 'completed all 7 steps', list every " +
+      "step number of the updated manual that was completed; if it " +
+      "says 'step 8 corrected the issue', list [8]; if it names no " +
+      "completed steps, use []).",
   ].filter(Boolean).join("\n");
 
   // v12: photo regions belong to callout concepts. Keep them
@@ -1010,10 +1097,23 @@ async function handleFollowup(req, res) {
     manual.photoHeight = oldPhotoHeight;
   }
 
+  // v24: completion, separate from badges. The model's
+  // completedSteps (1-based, in the updated manual's numbering)
+  // join the job's done set; enforcement above already ran, so
+  // a done mark can never upgrade a label. The response states
+  // which steps this follow-up newly marked done, so mistakes
+  // are visible and the tap control can correct them.
+  const { doneSteps, markedDone } = computeDoneSteps(
+    currentJob.doneSteps || [],
+    manual.completedSteps || [],
+    Array.isArray(manual.steps) ? manual.steps.length : 0
+  );
+  delete manual.completedSteps;
   currentJob = {
     machine: manual.machine,
     task: currentJob.task,
     manual,
+    doneSteps,
     ...(nextManualUrl
       ? { manualReference: nextReference, manualUrl: nextManualUrl }
       : {}),
@@ -1021,7 +1121,7 @@ async function handleFollowup(req, res) {
   saveJob();
 
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(manual));
+  res.end(JSON.stringify({ ...manual, doneSteps, markedDone }));
 }
 
 async function callModel(apiKey, messages, maxTokens) {
@@ -1461,6 +1561,18 @@ function tryParseManual(raw) {
       diagramSvg: sanitizeSvg(parsed.diagramSvg),
       manualUrl: parsed.manualUrl === EU7000IS_MANUAL_URL ? parsed.manualUrl : "",
       partsUrl: isPartsUrl(parsed.partsUrl) ? parsed.partsUrl : "",
+      // v24: step numbers the model says the new information
+      // completed (follow-up prompt only; generate never asks
+      // for it). Positive integers, deduped, sorted; the
+      // server clamps them to the manual's step count when it
+      // applies them — the model never owns done state.
+      completedSteps: Array.isArray(parsed.completedSteps)
+        ? [...new Set(
+            parsed.completedSteps.filter(
+              (n) => Number.isInteger(n) && n >= 1
+            )
+          )].sort((a, b) => a - b)
+        : [],
     };
   } catch {
     return null;
@@ -1488,5 +1600,6 @@ if (typeof module !== "undefined" && module.exports) {
     identifyMachine,
     searchFactoryManual,
     enforceBadgeIntegrity,
+    computeDoneSteps,
   };
 }

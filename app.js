@@ -41,6 +41,7 @@ let photoPending = false;
 let currentSteps = [];
 let currentParts = [];
 let currentManualUrl = null;
+let currentDoneSteps = [];
 
 // Photos are downscaled to at most 1280px on the long edge before
 // they are stored or sent. Full-resolution phone photos blew past the
@@ -331,6 +332,7 @@ generateBtn.addEventListener("click", async () => {
     currentSteps = [];
     currentParts = [];
     currentManualUrl = null;
+    currentDoneSteps = [];
   } finally {
     generateBtn.disabled = false;
   }
@@ -442,15 +444,8 @@ function renderManual(data) {
   currentSteps = data.steps || [];
   currentParts = data.parts || [];
   currentManualUrl = data.manualUrl || null;
-  stepsEl.innerHTML = currentSteps
-    .map((s) => {
-      const label = (s.label || "inferred").toLowerCase();
-      const cls = ["verified", "inferred", "illustrative"].includes(label)
-        ? label
-        : "inferred";
-      return `<li>${escapeHtml(s.text)}<span class="badge ${cls}">${cls}</span></li>`;
-    })
-    .join("");
+  currentDoneSteps = Array.isArray(data.doneSteps) ? data.doneSteps : [];
+  renderSteps();
   // Troubleshooting: symptom, cause, check — shown only when the
   // manual carries entries; older saved jobs without the section
   // render cleanly with the heading hidden.
@@ -471,6 +466,54 @@ function renderManual(data) {
     })
     .join("");
 }
+
+// v24: step list with completion state. Done is a marker of its
+// own — a green check, never a badge change: a done step keeps
+// whatever verified/inferred/illustrative badge it had. Each
+// step also gets a tap control that toggles its done state
+// through /api/stepdone (server-owned, persisted, restored on
+// load); the control lets Lance fix any mis-marking from a
+// follow-up without touching the manual.
+function renderSteps() {
+  stepsEl.innerHTML = currentSteps
+    .map((s, i) => {
+      const label = (s.label || "inferred").toLowerCase();
+      const cls = ["verified", "inferred", "illustrative"].includes(label)
+        ? label
+        : "inferred";
+      const n = i + 1;
+      const done = currentDoneSteps.includes(n);
+      return `<li>${escapeHtml(s.text)}<span class="badge ${cls}">${cls}</span>` +
+        (done ? `<span class="done-mark">✓ Done</span>` : "") +
+        `<button type="button" class="done-toggle" data-step="${n}">${done ? "Undo done" : "Mark done"}</button></li>`;
+    })
+    .join("");
+}
+
+// Tap-to-toggle, delegated so re-renders keep working: the
+// button flips one step's done state on the server, and the
+// list re-renders from the server's answer.
+stepsEl.addEventListener("click", async (event) => {
+  const btn = event.target.closest(".done-toggle");
+  if (!btn) return;
+  const step = parseInt(btn.dataset.step, 10);
+  if (!Number.isInteger(step)) return;
+  const done = !currentDoneSteps.includes(step);
+  try {
+    const res = await fetch("/api/stepdone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step, done }),
+    });
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data.doneSteps)) return;
+    currentDoneSteps = data.doneSteps;
+    renderSteps();
+  } catch {
+    // Server unreachable — the list stays as it was; the next
+    // render corrects it.
+  }
+});
 
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, (c) => ({
@@ -551,6 +594,7 @@ newJobBtn.addEventListener("click", async () => {
   currentSteps = [];
   currentParts = [];
   currentManualUrl = null;
+  currentDoneSteps = [];
   window.scrollTo(0, 0);
 });
 manualBtn.addEventListener("click", () => {
@@ -573,7 +617,7 @@ let restoredManual = false;
     const data = await res.json();
     if (data && data.manual && Array.isArray(data.manual.steps)) {
       if (data.task) taskInput.value = data.task;
-      renderManual(data.manual);
+      renderManual({ ...data.manual, doneSteps: data.doneSteps });
       restoredManual = true;
     }
   } catch {
@@ -638,6 +682,13 @@ followupBtn.addEventListener("click", async () => {
       throw new Error(data.error || "The server returned an error.");
     }
     renderManual(data);
+    // v24: state which steps this follow-up newly marked done,
+    // so a mis-marking is visible and the tap control can fix it.
+    if (Array.isArray(data.markedDone) && data.markedDone.length) {
+      const list = data.markedDone.join(", ");
+      followupStatus.textContent =
+        `Marked done: step${data.markedDone.length === 1 ? "" : "s"} ${list}.`;
+    }
   } catch (err) {
     // Keep the current manual on screen; show the error only.
     followupStatus.textContent = err.message;

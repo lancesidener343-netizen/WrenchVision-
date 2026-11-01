@@ -96,6 +96,17 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   Manuals.plus, the Internet Archive Manuals Library, iFixit, and
   ManualsOnline — steering only; every candidate is still verified
   by fetch.
+- Step completion (v24): steps the user says are done — in a
+  follow-up ("completed all 7 steps", "step 8 corrected the
+  issue") or by tapping a step's Mark done control — carry a
+  distinct ✓ Done marker that is separate from the
+  verified/inferred badge: a done step on a no-book job stays
+  inferred, a done step on a verified job stays verified.
+  Completion never changes a badge, and a badge never implies
+  completion. Done state persists in the saved job, restores on
+  load, and clears on New Job. The follow-up response states
+  which steps it newly marked done, so a mis-marking is visible
+  and tappable to correct.
 
 ## Demo machines
 
@@ -170,7 +181,8 @@ key is not configured instead of showing a manual.
   live-camera frame image; v22 adds factory-manual search +
   grounding (verified book or fallback to inferred); v23 adds
   badge-integrity enforcement (verified labels require a verified
-  factory reference, else they become inferred).
+  factory reference, else they become inferred); v24 adds
+  step-completion (done) markers, separate from badges.
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

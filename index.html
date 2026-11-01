@@ -29,6 +29,13 @@
   .verified { background: #12351f; color: #8fe3a8; }
   .inferred { background: #3a2c0a; color: #f0d48a; }
   .illustrative { background: #232347; color: #b9b9f5; }
+  /* v24: step completion is its own marker, never a badge
+     change — plain green check text, visually separate from
+     the pills above. The toggle is a small quiet button (no
+     gold wrench mark, no full-width stretch). */
+  .done-mark { display: inline-block; font-weight: 700; color: #8fe3a8; margin-left: 6px; vertical-align: middle; }
+  button.done-toggle { flex: none; min-width: 0; padding: 6px 10px; font-size: 0.85rem; margin-left: 6px; background: #2a2a30; color: #e8c96a; border: 1px solid #d4af37; }
+  button.done-toggle::before { content: none; }
   .diagram { border: 2px dashed #d4af37; border-radius: 8px; padding: 24px 14px; text-align: center; color: #c9bfa5; margin: 10px 0; }
   .photo-diagram { position: relative; }
   .photo-diagram img.preview { width: 100%; }
@@ -122,6 +129,6 @@
 
 <script src="app.js"></script>
 <script src="diagram-upgrades.js"></script>
-<p class="hint version">WrenchVision v23</p>
+<p class="hint version">WrenchVision v24</p>
 </body>
 </html>

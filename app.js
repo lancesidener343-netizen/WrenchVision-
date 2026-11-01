@@ -360,9 +360,11 @@ function renderManual(data) {
     .join(" — ");
   diagramBox.innerHTML = "";
   // v12: photo-anchored diagram. Only when the server located at
-  // least one part AND this page still holds the photo: a page
-  // reload has no photo in memory, so it renders the schematic
-  // instead — the same as the photo preview today. Markers are
+  // least one part AND this page holds the photo: v28 restores the
+  // photo with the job, so a reload brings the picture back and
+  // renders it here; only a job that genuinely never had a photo
+  // renders the schematic instead — the same as the photo preview
+  // today. Markers are
   // detected regions for a callout concept, never verified part
   // positions; parts with no marker were not located in this photo,
   // not missing from the job.
@@ -608,7 +610,10 @@ manualBtn.addEventListener("click", () => {
 // Leaving the app and coming back reloads the page; without this,
 // the reload shows an empty form even though the server still holds
 // the job. Fetching it here restores the manual in place, with no
-// new model call and no regeneration.
+// new model call and no regeneration. v28: the saved job carries
+// the photo too, so the restore puts the picture back before
+// rendering — the manual shows the photo diagram, not the
+// schematic, exactly as before the reload.
 let restoredManual = false;
 (async () => {
   try {
@@ -617,6 +622,12 @@ let restoredManual = false;
     const data = await res.json();
     if (data && data.manual && Array.isArray(data.manual.steps)) {
       if (data.task) taskInput.value = data.task;
+      // v28: restore the photo first — renderManual's photo branch
+      // needs it in page memory, and only a job that never had a
+      // photo leaves it null (schematic fallback, unchanged).
+      if (typeof data.photo === "string" && data.photo.startsWith("data:image/")) {
+        photoDataUrl = data.photo;
+      }
       renderManual({ ...data.manual, doneSteps: data.doneSteps });
       restoredManual = true;
     }

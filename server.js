@@ -80,7 +80,7 @@ const path = require("path");
 const zlib = require("zlib");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v27";
+const VERSION = "v28";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -497,7 +497,8 @@ async function searchFactoryManual(apiKey, photo, task) {
 // design: the saved job is wiped on startup, so the app opens
 // empty and the memory only starts holding once a photo is taken
 // and a manual is generated. The file holds only the machine, the
-// job text, and the latest manual — never a key.
+// job text, the latest manual, and (v28) the job's downscaled photo —
+// never a key.
 const JOB_FILE = path.join(__dirname, "wrenchvision-job.json");
 let currentJob = null;
 
@@ -516,6 +517,16 @@ function saveJob() {
   } catch {
     // A failed save must not break the manual that is already built.
   }
+}
+
+// v28: a job's photo is the downscaled JPEG data URL the client sent
+// with Generate. Only a data:image/* string is ever stored —
+// anything else stores as null, so a malformed payload cannot
+// smuggle junk into the saved job.
+function cleanPhoto(value) {
+  return typeof value === "string" && value.startsWith("data:image/")
+    ? value
+    : null;
 }
 
 const MIME = {
@@ -556,8 +567,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(
         currentJob
-          ? { task: currentJob.task || "", manual: currentJob.manual, doneSteps: currentJob.doneSteps || [] }
-          : { task: "", manual: null, doneSteps: [] }
+          ? { task: currentJob.task || "", manual: currentJob.manual, doneSteps: currentJob.doneSteps || [], photo: currentJob.photo || null }
+          : { task: "", manual: null, doneSteps: [], photo: null }
       ));
       return;
     }
@@ -822,6 +833,9 @@ async function handleGenerate(req, res) {
     task: input.task || "",
     manual,
     doneSteps: [],
+    // v28: the photo stays with the job, so a reload restores the
+    // picture instead of falling back to the schematic.
+    photo: cleanPhoto(input.photo),
     ...(searchGrounded
       ? { manualReference: foundManual.reference, manualUrl: foundManual.url }
       : {}),
@@ -1114,6 +1128,9 @@ async function handleFollowup(req, res) {
     task: currentJob.task,
     manual,
     doneSteps,
+    // v28: a follow-up keeps the job's photo — the picture survives
+    // manual updates exactly as it survives a reload.
+    photo: currentJob.photo || null,
     ...(nextManualUrl
       ? { manualReference: nextReference, manualUrl: nextManualUrl }
       : {}),

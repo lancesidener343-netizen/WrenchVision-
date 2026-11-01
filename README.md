@@ -207,7 +207,10 @@ key is not configured instead of showing a manual.
   (0.70 down to 0.50 alpha) so the fixed eye shows through better;
   v27 replaces the eye-only background with the full logo (eye +
   wrench + wordmark), white background removed to transparency, in
-  a portrait contain box so nothing is cut off.
+  a portrait contain box so nothing is cut off; v28 keeps the job's
+  photo with the job, so a reload restores the picture (with its
+  markers) instead of falling back to the boxed schematic — jobs
+  that never had a photo still render the schematic as before.
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

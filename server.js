@@ -80,7 +80,7 @@ const path = require("path");
 const zlib = require("zlib");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "v22";
+const VERSION = "v23";
 const MODEL = "muse-spark-1.3";
 const API_URL = "https://api.meta.ai/v1/chat/completions";
 // sam-3.1 does NOT work on /v1/chat/completions (that endpoint
@@ -124,6 +124,12 @@ const EU7000IS_PARTS_URL = "http://peparts.honda.com/powerequipment";
 // from the model (official manual URLs for the identified model)
 // and every candidate is verified by actually fetching it — a
 // candidate that fails to fetch, does not name the model, or does
+// not read as a manual is dropped, never presented. v23 steers
+// the model's candidate proposals toward the manufacturer's
+// official site first, then ManualsLib, Manuals.plus, the Internet
+// Archive Manuals Library, iFixit, and ManualsOnline — steering
+// only, never a weaker check: a steered candidate that fails
+// verification is rejected exactly like any other.
 // not read as a manual is dropped, never presented. Fetches are
 // capped in time and size; the reference handed to Generate is
 // slices only, never the whole book.
@@ -176,6 +182,33 @@ function machineMatches(generatedMachine, identified) {
 
 function looksLikeManual(text) {
   return MANUAL_MARKER_RE.test(String(text || ""));
+}
+
+// v23: badge integrity. A "verified" label is only honest when
+// the job carries a verified factory reference — a factory-manual
+// link, or reference slices from a verified book. The model
+// labels freely, including upgrading inferred items to verified
+// across follow-ups (seen on the C100 Pro v22 phone test: verified
+// badges with no book link). So the server rewrites verified →
+// inferred whenever no verified reference exists. "illustrative"
+// and other labels are untouched, and a job with a verified
+// reference (the Honda built-in link included) keeps the model's
+// labels exactly.
+function enforceBadgeIntegrity(manual, hasVerifiedReference) {
+  if (!manual || hasVerifiedReference) return manual;
+  for (const list of [manual.steps, manual.troubleshooting]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (
+        item &&
+        typeof item.label === "string" &&
+        item.label.toLowerCase() === "verified"
+      ) {
+        item.label = "inferred";
+      }
+    }
+  }
+  return manual;
 }
 
 // Fetch with a byte cap: oversized bodies are truncated, not
@@ -362,7 +395,8 @@ async function identifyMachine(apiKey, photo, task) {
         "Return JSON only, no other text: {\"machine\": \"full machine name\", " +
         "\"model\": \"exact model code or name as marked on the machine, or empty\", " +
         "\"manualCandidates\": [\"up to 3 official factory owner's manual URLs for this exact model, " +
-        "manufacturer site only, or empty\"]}.",
+        "or empty; prefer in order: the manufacturer's official support or download site, " +
+        "ManualsLib, Manuals.plus, the Internet Archive Manuals Library, iFixit, ManualsOnline\"]}.",
     },
   ];
   if (photo) {
@@ -681,6 +715,17 @@ async function handleGenerate(req, res) {
     manual.manualUrl = searchGrounded ? foundManual.url : "";
   }
 
+  // v23: badge integrity. The manual's verified labels stand
+  // only when this job carries a verified factory reference —
+  // the Honda built-in link, a verified search link, or verified
+  // reference slices. Otherwise every verified label becomes
+  // inferred, in both the response and the saved job.
+  enforceBadgeIntegrity(
+    manual,
+    Boolean(manual.manualUrl) ||
+      Boolean(searchGrounded && foundManual && foundManual.reference)
+  );
+
   // v12: photo-anchored diagram. Best effort only — a failure
   // here must not touch the manual that is already built.
   if (input.photo && Array.isArray(manual.callouts) && manual.callouts.length) {
@@ -941,6 +986,16 @@ async function handleFollowup(req, res) {
       manual.manualUrl = "";
     }
   }
+
+  // v23: badge integrity, same rule as generate. A follow-up
+  // cannot upgrade labels to verified without a verified
+  // reference carried for this machine — the carried search link,
+  // its reference slices, or the Honda built-in link. Otherwise
+  // verified labels become inferred.
+  enforceBadgeIntegrity(
+    manual,
+    Boolean(manual.manualUrl) || Boolean(nextReference)
+  );
 
   if (
     oldRegions &&
@@ -1432,5 +1487,6 @@ if (typeof module !== "undefined" && module.exports) {
     verifyManualCandidate,
     identifyMachine,
     searchFactoryManual,
+    enforceBadgeIntegrity,
   };
 }

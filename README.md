@@ -85,6 +85,17 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   to today's behavior (all inferred, no link), so a failed search
   never breaks the manual. The Honda EU7000is keeps its built-in
   reference.
+- Badge integrity (v23): a "verified" badge now requires a verified
+  factory reference behind it — the factory-manual link or reference
+  slices from a verified book. When no book verifies for a job, the
+  server rewrites any verified labels to inferred, on the first
+  manual and on every follow-up, so a badge can never outrun its
+  source. Jobs with a verified book (and the Honda EU7000is built-in
+  reference) are unchanged. Candidate proposals are also steered
+  (v23) toward the manufacturer's site first, then ManualsLib,
+  Manuals.plus, the Internet Archive Manuals Library, iFixit, and
+  ManualsOnline — steering only; every candidate is still verified
+  by fetch.
 
 ## Demo machines
 
@@ -157,7 +168,9 @@ key is not configured instead of showing a manual.
   v12–v13 add SAM photo diagrams; v16–v17 add the diagram upgrades
   (labels, leader lines, zoom, mask outlines); v21 serves the
   live-camera frame image; v22 adds factory-manual search +
-  grounding (verified book or fallback to inferred).
+  grounding (verified book or fallback to inferred); v23 adds
+  badge-integrity enforcement (verified labels require a verified
+  factory reference, else they become inferred).
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

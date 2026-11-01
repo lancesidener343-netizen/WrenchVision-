@@ -204,7 +204,10 @@ key is not configured instead of showing a manual.
   the fixed centered logo background + translucent cards, removes
   the camera caption and the Speak-it button, and adds the
   Upload-a-photo button; v26 makes the cards more see-through
-  (0.70 down to 0.50 alpha) so the fixed eye shows through better.
+  (0.70 down to 0.50 alpha) so the fixed eye shows through better;
+  v27 replaces the eye-only background with the full logo (eye +
+  wrench + wordmark), white background removed to transparency, in
+  a portrait contain box so nothing is cut off.
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

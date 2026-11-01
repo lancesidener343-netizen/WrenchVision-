@@ -120,6 +120,11 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   attach path as the camera button, but without the camera
   capture hint, so the chooser offers existing photos when a
   picture can't be taken.
+- Cosmetics (v26): the cards get more see-through (card and speak-bar
+  backgrounds from 0.70 down to 0.50 alpha) so the fixed eye shows
+  through them clearly while scrolling; the eye layer itself is
+  unchanged, and the photo, diagram area, buttons, and inputs stay
+  fully opaque with text still readable.
 
 ## Demo machines
 
@@ -198,7 +203,8 @@ key is not configured instead of showing a manual.
   step-completion (done) markers, separate from badges; v25 adds
   the fixed centered logo background + translucent cards, removes
   the camera caption and the Speak-it button, and adds the
-  Upload-a-photo button.
+  Upload-a-photo button; v26 makes the cards more see-through
+  (0.70 down to 0.50 alpha) so the fixed eye shows through better.
 - `diagram-upgrades.js` / `diagram-upgrades.css` — client-only
   plug-in for the diagram upgrades (labels, leader lines,
   tap-to-zoom, SAM mask outlines). No loop logic lives here.

@@ -62,8 +62,8 @@
      repo. z-index -1 keeps it above the page gradient but below
      every card, and pointer-events none keeps it untappable. */
   body::before { content: ""; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(60vw, 420px); height: min(60vw, 420px); background-image: var(--wv-bg-image, none); background-size: contain; background-repeat: no-repeat; background-position: center; opacity: 0.16; pointer-events: none; z-index: -1; }
-  .card { background: rgba(30, 30, 36, 0.70); }
-  .speak-bar { background: rgba(38, 38, 46, 0.70); }
+  .card { background: rgba(30, 30, 36, 0.50); }
+  .speak-bar { background: rgba(38, 38, 46, 0.50); }
   ol.steps li { background: transparent; }
   .diagram { background: #1e1e24; }
 </style>
@@ -140,6 +140,6 @@
 
 <script src="app.js"></script>
 <script src="diagram-upgrades.js"></script>
-<p class="hint version">WrenchVision v25</p>
+<p class="hint version">WrenchVision v26</p>
 </body>
 </html>

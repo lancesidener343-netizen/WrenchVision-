@@ -48,9 +48,8 @@ exploded-view repair manual with a spoken step-by-step walkthrough.
   A part SAM cannot see gets no marker, and when no part is located
   the diagram falls back to the schematic — never a guessed region
   presented as a part. Markers are detections, not verified part
-  positions. A page reload has no photo in memory, so it renders the
-  schematic; a follow-up keeps the photo markers only when the
-  callout list is unchanged.
+  positions. A page reload restores the job's photo with its markers
+  (v28); a follow-up keeps the photo with the rebuilt manual.
 - (v13 fix): SAM prompts are simplified from full callout phrases to
   short nouns ("Display screen module" -> "screen", "Volume control
   potentiometer" -> "knob"), because SAM is weak with complicated
@@ -172,7 +171,7 @@ key is not configured instead of showing a manual.
 - `index.html` — mobile-first single page: one Open camera button
   (the phone's camera, via the file picker), photo preview, job
   description input with voice input, and the results area. The page footer shows the app version
-  (v22), so a phone screenshot settles which build is running. On
+  (v28), so a phone screenshot settles which build is running. On
   load, the page restores the job saved during this server run
   (GET /api/job), so leaving the app and coming back mid-job shows
   the manual instead of an empty form; starting the server is a
@@ -181,8 +180,7 @@ key is not configured instead of showing a manual.
   app's own backend and never handles an API key. Photos are
   downscaled to 1280px on the long edge before sending.
 - `server.js` — Node backend (no external dependencies). Serves the
-  frontend and calls the Meta Model API, standard tier, on the server
-  side only. It keeps the current job in memory and saved to
+  frontend and calls Meta's models on the server side only: Muse Spark 1.3 (standard tier) for Generate-Scan-Fix manual generation, and SAM 3.1 for photo diagrams. It keeps the current job in memory and saved to
   `wrenchvision-job.json`, so leaving the app and coming back
   mid-job restores it; a server start wipes the saved job (clean
   slate), and GET /api/job returns the current run's job for the
